@@ -94,7 +94,7 @@ export default function SettingsPage() {
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-muted-foreground">API:</span> <code>{API_URL}</code>
+                <span className="text-muted-foreground">API:</span> <code>{API_URL || "same origin (/api)"}</code>
                 {health === null ? <Badge variant="muted">checking…</Badge> : health.ok ? <Badge variant="success">healthy · db: {health.db}</Badge> : <Badge variant="danger">unreachable</Badge>}
               </div>
               <div className="flex flex-wrap items-center gap-2">

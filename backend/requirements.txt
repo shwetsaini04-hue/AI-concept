@@ -8,5 +8,3 @@ numpy>=1.26
 scikit-learn>=1.4
 # PostgreSQL driver (only needed when DATABASE_URL points at Postgres)
 psycopg[binary]>=3.1
-# tests
-pytest>=8.0

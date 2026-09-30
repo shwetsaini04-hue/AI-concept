@@ -33,7 +33,7 @@ _SessionLocal: sessionmaker[Session] | None = None
 def init_engine(url: str | None = None) -> Engine:
     """Create the engine and tables. Safe to call repeatedly (tests call it with a temp URL)."""
     global _engine, _SessionLocal
-    url = url or get_settings().database_url
+    url = url or get_settings().resolved_database_url
     kwargs: dict = {"pool_pre_ping": True}
     if url.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}

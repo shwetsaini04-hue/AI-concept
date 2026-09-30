@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,6 +21,21 @@ class Settings(BaseSettings):
 
     max_output_tokens: int = 1024
     request_timeout_seconds: float = 60.0
+
+    @property
+    def resolved_database_url(self) -> str:
+        """Normalize provider URLs and keep SQLite usable on read-only serverless filesystems."""
+        url = self.database_url
+        # Hosted Postgres (Neon, Supabase, Vercel Marketplace) hands out postgres:// or postgresql://;
+        # we ship the psycopg (v3) driver, so make SQLAlchemy use it.
+        if url.startswith("postgres://"):
+            url = "postgresql+psycopg://" + url[len("postgres://") :]
+        elif url.startswith("postgresql://"):
+            url = "postgresql+psycopg://" + url[len("postgresql://") :]
+        # On Vercel only /tmp is writable. SQLite there works but is NOT persistent — use Postgres in production.
+        if url.startswith("sqlite:///./") and os.environ.get("VERCEL"):
+            url = "sqlite:////tmp/" + url[len("sqlite:///./") :]
+        return url
 
     @property
     def cors_origin_list(self) -> list[str]:

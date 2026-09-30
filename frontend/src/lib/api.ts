@@ -5,8 +5,12 @@
  */
 import type { ProgressData } from "@/lib/store/progress";
 
-export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
-export const hasBackend = () => API_URL.length > 0;
+// "/" means same origin (Vercel services: /api/* is routed to the backend service);
+// a full URL (e.g. http://localhost:8000) points at a separately running backend;
+// unset means browser-only mode.
+const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+export const API_URL = RAW_API_URL.replace(/\/$/, "");
+export const hasBackend = () => RAW_API_URL.length > 0;
 
 async function req<T>(path: string, init?: RequestInit, timeoutMs = 60000): Promise<T> {
   const ctrl = new AbortController();

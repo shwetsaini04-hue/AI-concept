@@ -27,6 +27,24 @@ uvicorn app.main:app --port 8000
 
 Then create `frontend/.env.local` with `NEXT_PUBLIC_API_URL=http://localhost:8000` and restart the frontend.
 
+## Deploy on Vercel
+
+`vercel.json` deploys both parts as one project with two services on one domain:
+
+- `/api/*` → `backend` (FastAPI, `backend/app/main.py`)
+- everything else → `frontend` (Next.js)
+
+Environment variables (Project → Settings → Environment Variables):
+
+| Variable | Needed? | Value |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | only to enable the backend | `/` (same origin) |
+| `DATABASE_URL` | recommended with the backend | hosted Postgres URL (e.g. Neon); without it progress sync doesn't persist |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | optional | enables real model calls in the labs |
+| `CORS_ORIGINS` | no | same origin, not needed |
+
+Local test of the combined setup: `vercel dev` from the repo root.
+
 ## Checks
 
 ```bash
