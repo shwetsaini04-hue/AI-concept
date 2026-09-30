@@ -1,0 +1,250 @@
+import type { Lesson } from "../../types";
+
+export const structuredOutput: Lesson = {
+  slug: "structured-output",
+  module: "llm",
+  order: 2,
+  title: "Structured Output",
+  tagline: "JSON schemas, enums, validation and constrained generation — and why valid ≠ correct.",
+  difficulty: "Intermediate",
+  minutes: 35,
+  stages: ["ner", "classification"],
+  why: `Downstream code can't read prose. It needs \`{"intent": "interested", "amount": 500000}\` — every time, with exactly those keys, types and allowed values. At 100,000 calls a day, a 1% malformed-output rate is 1,000 silent failures.
+
+**[[Structured output|structured-output]]** is a contract (a **[[JSON Schema|json-schema]]**) plus enforcement (validation, retries, and where available **[[constrained decoding|constrained-decoding]]**). The contract guarantees *shape*; only evaluation tells you whether the *values* are right.`,
+  concepts: [
+    {
+      title: "The schema is the contract",
+      intuition: `A schema says: these fields exist, these are required, this one is an integer ≥ 0, this one is one of three exact strings, nothing else is allowed. Write it before the prompt — it forces you to decide what you actually need.`,
+      technical: `JSON Schema keywords: \`type\`, \`required\`, \`properties\`, \`enum\`, \`minimum/maximum\`, \`items\`, \`additionalProperties: false\`, nullable via \`type: ["integer","null"]\`. Validate every output (e.g., Ajv, jsonschema, Pydantic). Use \`null\` for unknown values rather than omitting keys, and keep enums lowercase snake_case to avoid case mismatches.`,
+      example: `\`intent: {"enum": ["interested","not_interested","insufficient_evidence"]}\` rejects "Interested", "maybe" and "Not Interested" — each a real failure seen in production.`,
+    },
+    {
+      title: "Constrained decoding vs validate-and-retry",
+      intuition: `Two ways to get valid JSON: (1) **constrain generation** so the model can only pick tokens that keep the output valid; (2) **let it generate, then validate**, retrying or routing to review on failure. Constrained decoding guarantees syntax; neither guarantees the answer is right.`,
+      technical: `Grammar-constrained decoding masks logits of tokens that would violate a grammar/schema at each step (JSON mode, tool/function calling with strict schemas, or libraries like Outlines/guidance for open models). Validate-and-retry works with any model but costs extra calls and needs a bounded retry policy. Watch for [[max_tokens|max-tokens]] truncation (valid prefix, invalid whole) and chatty wrappers (“Sure! Here is the JSON:” followed by a markdown code fence).`,
+      example: `After \`{"intent": "\` a constrained decoder allows only continuations of the three enum values. The model's top raw token ("Interested") is masked; the best legal token wins — step through it in the lab.`,
+    },
+  ],
+  questions: {
+    what: "Making the model emit machine-readable output (usually JSON) that conforms to a declared schema.",
+    why: "Automation needs predictable fields, types and allowed values.",
+    problem: "It eliminates parsing heuristics and silent failures between the LLM and downstream code.",
+    how: "Declare a JSON Schema, instruct the model (or use JSON/tool mode), validate every response, retry once, then fall back to review; optionally constrain decoding.",
+    onRealData: "Amounts like '5 lakh' tempt models into strings; enums drift in case ('Interested'); long reasoning fields hit max_tokens and truncate the object.",
+    whatCanGoWrong: "Invalid syntax, wrong types, enum violations, missing required fields, extra fields, markdown wrappers, truncation — and schema-valid but factually wrong values.",
+    howToEvaluate: "Format validity rate (parse + schema), per-field accuracy against gold, and truncation/stop-reason rates.",
+    whenToUse: "Every LLM output consumed by code.",
+    whenNotToUse: "Free-text summaries for humans (still consider a light schema with a summary field).",
+    downstream: "Schema design fixes the interface between stages; enum choices must match the taxonomy and the annotation guideline.",
+  },
+  lab: {
+    id: "structured-output",
+    title: "JSON extraction lab",
+    intro: "Edit a JSON Schema and a model output and validate live with a real validator. Diagnose eight deliberately malformed outputs. Step through constrained decoding token by token.",
+    modes: ["computed", "precomputed"],
+  },
+  realWorld: {
+    text: `A nightly pipeline logged “0 interested customers” for three days. The model had started returning \`"intent": "Interested"\` after a provider model update; the downstream filter compared against the lowercase enum. No exception was thrown. The team added schema validation with \`enum\`, alerting on validity-rate drops, and pinned the model version.`,
+  },
+  mistakes: [
+    { mistake: "Parsing with regex instead of validating against a schema", why: "Silent failures: wrong types and enum drift pass through.", fix: "Validate every output; alert on validity rate." },
+    { mistake: "Omitting keys for unknown values", why: "Downstream code breaks or treats missing as false.", fix: "Require all keys; use null for unknown." },
+    { mistake: "Believing valid output is correct output", why: "The schema can't know that 5 lakh ≠ 50,000.", fix: "Add grounding checks and field-level evaluation." },
+    { mistake: "Unbounded retries", why: "Cost and latency explode on systematic failures.", fix: "One retry, then route to review and log." },
+  ],
+  decision: {
+    question: "Constrained decoding, JSON mode, or validate-and-retry?",
+    useWhen: ["Constrained decoding/strict tool schemas when your provider or runtime supports them", "Validate-and-retry always, as a safety net", "Both for high-volume pipelines"],
+    avoidWhen: ["Relying on 'please return JSON' alone at scale"],
+    tradeoffs: [
+      { a: "Strict schema", b: "Flexibility", note: "additionalProperties: false surfaces improvisation but requires schema updates for new fields." },
+      { a: "Reasoning field", b: "Truncation & cost", note: "Long 'reason' fields help audits but raise token cost and truncation risk; cap length." },
+    ],
+  },
+  exercises: [
+    {
+      id: "so-ex-1",
+      kind: "mcq",
+      exType: "applied",
+      difficulty: "Beginner",
+      concept: "output-validation",
+      prompt: "Output: `{\"loan_type\": \"personal\", \"amount\": \"5 lakh\", \"interest_rate_mentioned\": true, \"intent\": \"interested\"}`. The schema says amount is an integer. What's wrong?",
+      options: [
+        { text: "Wrong type: amount is a string", correct: true },
+        { text: "Enum violation", whyWrong: "intent is valid." },
+        { text: "Missing field", whyWrong: "All fields are present." },
+        { text: "Invalid JSON syntax", whyWrong: "It parses fine." },
+      ],
+      hint: "Look at the value's type.",
+      explanation: "The model copied the surface form. Ask for an integer in rupees — or extract the span and normalize in code.",
+    },
+    {
+      id: "so-ex-2",
+      kind: "json",
+      exType: "engineering",
+      difficulty: "Intermediate",
+      concept: "json-schema",
+      prompt: "Design a JSON Schema for extracting **loan amount, tenure and interest rate**. Requirements: all three keys required; amount integer ≥ 0 or null; tenure_months integer or null; interest_rate number between 0 and 50 or null; no extra fields.",
+      starter: `{
+  "type": "object",
+  "properties": {},
+  "required": []
+}`,
+      checks: [
+        { label: "type is object", test: (v) => v?.type === "object" },
+        { label: "requires amount, tenure_months, interest_rate", test: (v) => ["amount", "tenure_months", "interest_rate"].every((k) => v?.required?.includes(k)) },
+        { label: "amount allows integer and null", test: (v) => { const t = v?.properties?.amount?.type; return Array.isArray(t) && t.includes("integer") && t.includes("null"); } },
+        { label: "amount has minimum 0", test: (v) => v?.properties?.amount?.minimum === 0 },
+        { label: "interest_rate is number/null with max 50", test: (v) => { const r = v?.properties?.interest_rate; return Array.isArray(r?.type) && r.type.includes("number") && r.type.includes("null") && r.maximum === 50; } },
+        { label: "additionalProperties is false", test: (v) => v?.additionalProperties === false },
+      ],
+      hint: "Use type arrays like [\"integer\", \"null\"] for nullable fields.",
+      modelAnswer: `{
+  "type": "object",
+  "required": ["amount", "tenure_months", "interest_rate"],
+  "additionalProperties": false,
+  "properties": {
+    "amount": { "type": ["integer", "null"], "minimum": 0 },
+    "tenure_months": { "type": ["integer", "null"], "minimum": 1 },
+    "interest_rate": { "type": ["number", "null"], "minimum": 0, "maximum": 50 }
+  }
+}`,
+      explanation: "Required + nullable makes 'unknown' explicit; ranges catch obvious hallucinations (a 105% rate); additionalProperties:false exposes improvisation.",
+    },
+    {
+      id: "so-ex-3",
+      kind: "mcq",
+      exType: "conceptual",
+      difficulty: "Intermediate",
+      concept: "constrained-decoding",
+      prompt: "With grammar-constrained decoding enforcing the intent enum, which failure can STILL happen?",
+      options: [
+        { text: "The model picks a valid but wrong label", correct: true },
+        { text: "Output 'Interested' with a capital I", whyWrong: "The grammar forbids it." },
+        { text: "Prose before the JSON", whyWrong: "The grammar forbids it." },
+        { text: "A missing closing brace", whyWrong: "The grammar forbids it (unless max_tokens truncates generation)." },
+      ],
+      hint: "Constraints guarantee form, not…",
+      explanation: "Validity ≠ correctness. Evaluate values against gold labels.",
+    },
+  ],
+  quiz: [
+    {
+      id: "so-q-1",
+      kind: "mcq",
+      difficulty: "Beginner",
+      concept: "json-schema",
+      prompt: "What does `\"additionalProperties\": false` do?",
+      options: [
+        { text: "Rejects objects with keys not listed in properties", correct: true },
+        { text: "Makes all properties optional", whyWrong: "That's controlled by 'required'." },
+        { text: "Disallows null values", whyWrong: "That's type." },
+        { text: "Sorts keys", whyWrong: "No." },
+      ],
+      hint: "Additional = not declared.",
+      explanation: "Undeclared keys fail validation — useful to catch improvisation.",
+    },
+    {
+      id: "so-q-2",
+      kind: "mcq",
+      difficulty: "Intermediate",
+      concept: "output-validation",
+      prompt: "An output ends with `\"interest_rate_men` and no closing brace. Most likely cause?",
+      options: [
+        { text: "Generation hit max_tokens", correct: true },
+        { text: "Temperature too low", whyWrong: "Temperature doesn't truncate." },
+        { text: "Enum violation", whyWrong: "It never got that far." },
+        { text: "The schema was wrong", whyWrong: "Truncation is a generation-length issue." },
+      ],
+      hint: "Why would text stop mid-word?",
+      explanation: "Check the stop reason; raise max_tokens or shorten outputs.",
+    },
+    {
+      id: "so-q-3",
+      kind: "mcq",
+      difficulty: "Intermediate",
+      concept: "json-schema",
+      prompt: "Unknown amount should be represented as…",
+      options: [
+        { text: "\"amount\": null (key present)", correct: true },
+        { text: "Omitting the key", whyWrong: "Missing keys break required-field contracts and consumer code." },
+        { text: "\"amount\": 0", whyWrong: "0 is a value, not 'unknown'." },
+        { text: "\"amount\": \"unknown\"", whyWrong: "Wrong type." },
+      ],
+      hint: "Distinguish 'zero' from 'not mentioned'.",
+      explanation: "null makes absence explicit and type-safe.",
+    },
+    {
+      id: "so-q-4",
+      kind: "multi",
+      difficulty: "Intermediate",
+      concept: "output-validation",
+      prompt: "Which belong in a production structured-output pipeline? (Select all)",
+      options: [
+        { text: "Schema validation of every response", correct: true },
+        { text: "A bounded retry, then routing to review", correct: true },
+        { text: "Monitoring the validity rate over time", correct: true },
+        { text: "Retrying indefinitely until valid", whyWrong: "Unbounded retries hide systematic failures and cost money." },
+      ],
+      hint: "Three are safeguards; one is a trap.",
+      explanation: "Validate, retry once, route, monitor.",
+    },
+    {
+      id: "so-q-5",
+      kind: "mcq",
+      difficulty: "Advanced",
+      concept: "constrained-decoding",
+      prompt: "How does grammar-constrained decoding enforce an enum?",
+      options: [
+        { text: "It sets logits of tokens that can't continue a valid value to −∞ at each step", correct: true },
+        { text: "It retrains the model on the enum", whyWrong: "No training involved." },
+        { text: "It post-processes the output with regex", whyWrong: "That's validation, not decoding." },
+        { text: "It raises the temperature for enum tokens", whyWrong: "No." },
+      ],
+      hint: "It acts during generation.",
+      explanation: "Masking illegal tokens guarantees syntactic validity by construction.",
+    },
+  ],
+  challenge: {
+    id: "so-ch-1",
+    kind: "json",
+    exType: "engineering",
+    difficulty: "Advanced",
+    concept: "json-schema",
+    prompt: "Write the final-output schema for the transcript system: fields intent (enum of 3), entities (object with amount integer|null), evidence (string), confidence (number 0–1), reason (string), needs_review (boolean). All required; no extra fields at top level.",
+    starter: `{
+  "type": "object",
+  "required": [],
+  "properties": {}
+}`,
+    checks: [
+      { label: "All six fields required", test: (v) => ["intent", "entities", "evidence", "confidence", "reason", "needs_review"].every((k) => v?.required?.includes(k)) },
+      { label: "intent enum has 3 values", test: (v) => Array.isArray(v?.properties?.intent?.enum) && v.properties.intent.enum.length === 3 },
+      { label: "confidence number in [0,1]", test: (v) => v?.properties?.confidence?.type === "number" && v.properties.confidence.minimum === 0 && v.properties.confidence.maximum === 1 },
+      { label: "needs_review boolean", test: (v) => v?.properties?.needs_review?.type === "boolean" },
+      { label: "entities.amount integer|null", test: (v) => { const t = v?.properties?.entities?.properties?.amount?.type; return Array.isArray(t) && t.includes("integer") && t.includes("null"); } },
+      { label: "additionalProperties false", test: (v) => v?.additionalProperties === false },
+    ],
+    hint: "Nested object for entities with its own properties.",
+    modelAnswer: `{
+  "type": "object",
+  "required": ["intent", "entities", "evidence", "confidence", "reason", "needs_review"],
+  "additionalProperties": false,
+  "properties": {
+    "intent": { "enum": ["interested", "not_interested", "insufficient_evidence"] },
+    "entities": {
+      "type": "object",
+      "properties": { "amount": { "type": ["integer", "null"], "minimum": 0 } }
+    },
+    "evidence": { "type": "string" },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "reason": { "type": "string", "maxLength": 300 },
+    "needs_review": { "type": "boolean" }
+  }
+}`,
+    explanation: "This is the capstone's output contract. maxLength on reason limits truncation risk.",
+  },
+  related: ["prompt-engineering", "ner", "hallucination"],
+  terms: ["structured-output", "json-schema", "constrained-decoding", "max-tokens"],
+};

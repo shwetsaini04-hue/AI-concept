@@ -1,0 +1,36 @@
+# ---- Dependencies (reinstalled with `npm install` / `pip install`) ----
+node_modules/
+.venv/
+venv/
+env/
+
+# ---- Build output & caches ----
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# ---- Local data (SQLite database used by the backend) ----
+backend/data/
+*.db
+*.sqlite3
+
+# ---- Secrets: never commit real API keys ----
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ---- Editor / OS / tool noise ----
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+npm-debug.log*
+.claude/settings.local.json

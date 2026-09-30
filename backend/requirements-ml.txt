@@ -1,0 +1,4 @@
+# Optional: enables POST /api/embeddings with a real sentence-transformers model.
+# Heavy (installs PyTorch). Not needed for the rest of the app.
+-r requirements.txt
+sentence-transformers>=3.0
