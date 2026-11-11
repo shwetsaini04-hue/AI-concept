@@ -1,0 +1,991 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PL-PA overall, Kotak</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;background:#F4F6FA}
+body{font-family:"Segoe UI",system-ui,-apple-system,sans-serif;color:#0E2240}
+a{color:#003874}a:hover{color:#00254D}
+select,input,button{font:inherit}
+button{color:inherit}
+button:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid #003874;outline-offset:2px}
+button:disabled{cursor:default}
+.blink{display:inline-block;animation:kpiBlink 1.2s ease-in-out infinite}
+@keyframes kpiBlink{0%,100%{opacity:1}50%{opacity:0.15}}
+@media (prefers-reduced-motion: reduce){.blink{animation:none}}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.grow{display:flex;transform-origin:left center;animation:growX .9s cubic-bezier(.2,.8,.2,1) both}
+@keyframes growX{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.notch{animation:fadeIn .5s ease .75s both}
+.pulse{animation:fadeIn .5s ease .75s both,leakPulse 2.2s ease-in-out 1.4s infinite}
+.pulse2{animation:leakPulse 2.2s ease-in-out infinite}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes leakPulse{0%,100%{box-shadow:0 0 0 0 rgba(237,28,36,.35)}50%{box-shadow:0 0 0 7px rgba(237,28,36,0)}}
+.draw{stroke-dasharray:1;stroke-dashoffset:1;animation:drawLine 1.4s cubic-bezier(.4,0,.2,1) .3s forwards}
+@keyframes drawLine{to{stroke-dashoffset:0}}
+.areaIn{animation:fadeIn .8s ease 1.1s both}
+.lift{transition:transform .2s ease,box-shadow .2s ease}
+.lift:hover{transform:translateY(-2px);box-shadow:0 2px 4px rgba(0,37,77,.06),0 18px 40px rgba(0,37,77,.12)!important}
+.slideIn{animation:slideIn .28s cubic-bezier(.2,.8,.2,1) both}
+@keyframes slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
+.fadeBg{animation:fadeIn .2s ease both}
+.ftab{transition:padding .15s ease,background-color .15s ease}
+.ftab:hover{background:#00254D!important;padding-left:14px!important}
+.frow{transition:background-color .15s ease}
+.frow:hover{background-color:#F2F5FA!important}
+@media (prefers-reduced-motion: reduce){.grow,.notch,.pulse,.pulse2,.areaIn{animation:none}.draw{animation:none;stroke-dashoffset:0}.lift,.lift:hover{transition:none;transform:none}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function () {
+  'use strict';
+  // ------------------------------------------------------------------ constants
+  const DAY = 864e5, START = Date.UTC(2026, 6, 1), END = Date.UTC(2026, 10, 8);
+  const N = Math.round((END - START) / DAY) + 1;
+  const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const MONL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const WDN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const MK0 = 2026 * 12 + 6, MK1 = 2026 * 12 + 10;
+  const TICKET = 33.2213 / 3607;
+  const SN = ['Offer generated','Offer reviewed','Offer selected','Offer accepted','Disb. initiated','Disb. completed','Booked in core'];
+  const G = [18537, 14210, 9860, 6420, 4105, 3816, 3607];
+
+  const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const dd = (t) => { const d = new Date(t); return d.getUTCDate() + ' ' + MON[d.getUTCMonth()]; };
+  const ddy = (t) => dd(t) + ' ' + new Date(t).getUTCFullYear();
+  const fmt = (n) => Math.round(n).toLocaleString('en-IN');
+  const mStart = (k) => Date.UTC(Math.floor(k / 12), k % 12, 1);
+  const mEnd = (k) => Date.UTC(Math.floor(k / 12), k % 12 + 1, 0);
+  const mKeyOf = (t) => { const d = new Date(t); return d.getUTCFullYear() * 12 + d.getUTCMonth(); };
+  // Weeks are month-based: 1-7, 8-14, 15-21, 22-28, 29-month end
+  const monOf = (t) => { const d = new Date(t); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1 + Math.floor((d.getUTCDate() - 1) / 7) * 7); };
+  const wEnd = (ws) => Math.min(ws + 6 * DAY, mEnd(mKeyOf(ws)));
+  const wNo = (ws) => Math.floor((new Date(ws).getUTCDate() - 1) / 7) + 1;
+  const wPrev = (ws) => { if (new Date(ws).getUTCDate() > 1) return ws - 7 * DAY; const pk = mKeyOf(ws) - 1; const dim = new Date(mEnd(pk)).getUTCDate(); return Date.UTC(Math.floor(pk / 12), pk % 12, 1 + Math.floor((dim - 1) / 7) * 7); };
+  const wName = (ws) => 'Week ' + wNo(ws) + ' of ' + MON[new Date(ws).getUTCMonth()];
+  const wSpan = (ws) => new Date(ws).getUTCDate() + '–' + dd(wEnd(ws));
+  const idx = (t) => Math.max(0, Math.min(N - 1, Math.round((t - START) / DAY)));
+  const pill = (on) => ({ bg: on ? '#003874' : '#FFFFFF', fg: on ? '#FFFFFF' : '#003874' });
+  let INTRO = 0, FIRST = true;
+  const pill2 = (on) => ({ bg: on ? '#003874' : 'transparent', fg: on ? '#FFFFFF' : '#0E2240' });
+  const rnd = (i, k) => { const x = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453; return x - Math.floor(x); };
+
+  // ------------------------------------------------------------------ mock daily data
+  const gst = G.map((x, i) => i ? x / G[i - 1] : 1);
+  const DAYS = (function () {
+    const days = [];
+    const nov1 = Math.round((Date.UTC(2026, 10, 1) - START) / DAY);
+    const OV = { 0: [3910, 760], 1: [3620, 702], 2: [3405, 668], 3: [3880, 751], 4: [3722, 726] };
+    for (let i = 0; i < N; i++) {
+      const t = START + i * DAY, wd = new Date(t).getUTCDay();
+      let p = 3350 + i * 2.2;
+      if (wd === 0 || wd === 6) p *= 0.8;
+      if (t >= Date.UTC(2026, 9, 15)) p *= 1.08;
+      p *= 0.92 + 0.16 * rnd(i, 1);
+      const ov = OV[i - nov1];
+      if (ov) p = ov[0];
+      const age = N - 1 - i;
+      const c = [Math.round(p)];
+      for (let k = 1; k < 7; k++) {
+        let st = gst[k] * (0.96 + 0.08 * rnd(i, k + 2)) * (1 + (i - N / 2) * 0.0002);
+        if (age < 3 && k >= 3) st *= 0.6 + 0.13 * age;
+        c.push(c[k - 1] * Math.min(0.99, st));
+      }
+      if (ov) { const f = ov[1] / c[6]; for (let k = 1; k < 7; k++) c[k] *= Math.pow(f, k / 6); c[6] = ov[1]; }
+      for (let k = 5; k >= 1; k--) c[k] = Math.max(c[k], c[k + 1]);
+      for (let k = 1; k < 7; k++) c[k] = Math.min(c[k], c[k - 1]);
+      days.push({ t, c, amtPer: TICKET * (0.95 + 0.1 * rnd(i, 11)) });
+    }
+    return days;
+  })();
+
+  // ------------------------------------------------------------------ filters
+  const D = (g, label, code, opts, q) => ({ g, label, code, opts, q });
+  const DEF = [
+    D('chan','Journey channel','unified_journey_channel__c',['Mobile app','Net banking','Web','RM-assisted'],[1.25,1.0,0.7,1.35]),
+    D('chan','Resume channel','unified_resume_journey_channel__c',['Same channel','App resume','Web resume','Assisted resume']),
+    D('chan','Campaign code','campaign_code__c',Array.from({ length: 240 }, (_, i) => 'PA_' + ['FEST','AON','PUSH','RET','XSELL'][i % 5] + '_' + String(i + 1).padStart(3, '0'))),
+    D('chan','UTM source','utm_source__c',['Google','Meta','SMS','Email','Direct']),
+    D('chan','UTM medium','utm_medium__c',['cpc','push','sms','email']),
+    D('chan','UTM campaign','utm_campaign__c',Array.from({ length: 180 }, (_, i) => 'pa_' + ['diwali','always_on','preapproved','topup','reactivation','salary_day'][i % 6] + '_' + String(i + 1).padStart(3, '0'))),
+    D('out','Dropped reason','unified_dropped_reason__c',['None','Rate concern','Amount concern','Technical error','Customer dropped'],[1.6,0.5,0.55,0.6,0.4]),
+    D('out','On-hold reason','unified_on_hold_reason__c',['None','KYC pending','Mandate pending','Manual review'],[1.2,0.6,0.7,0.8]),
+    D('out','Reject reason','reject_reason__c',['None','Policy reject','Bureau reject','Fraud check'],[1.15,0.3,0.35,0.3]),
+    D('cust','FT type','ft_type',['FT','Non-FT']),
+    D('cust','Offer amount','offer_amt_bkt',['< 1 L','1–3 L','3–5 L','5–10 L','10 L+'],[0.8,1.1,1.15,1.0,0.85]),
+    D('cust','Offer ROI','offer_roi_bkt',['< 11%','11–13%','13–15%','15%+'],[1.4,1.15,0.9,0.65]),
+    D('cust','CIBIL score','cibil_score_bkt',['< 650','650–699','700–749','750–799','800+'],[0.45,0.7,0.95,1.2,1.5]),
+    D('cust','Occupation','occupation',['Salaried','Self-employed','Professional','Others'],[1.1,0.8,1.0,0.7]),
+    D('cust','Tenure','tenure_bkt',['≤ 12 m','13–24 m','25–36 m','37–60 m']),
+    D('cust','PL decile','pl_decile_bkt',['D1–D2','D3–D4','D5–D6','D7–D8','D9–D10'],[1.45,1.15,0.95,0.8,0.6]),
+    D('cust','811 account','acct_811_tag',['811','Non-811'],[1.2,0.9]),
+    D('cust','RM-assisted','rm_assisted_conversion',['Yes','No'],[1.35,0.9]),
+    D('dyn','Funnel stage (furthest)','funnel_stage',['OFFER_GENERATED','OFFER_REVIEW','OFFER_SELECTED','OFFER_ACCEPTED','DISBURSEMENT_INITIATED','DISBURSEMENT_COMPLETED','BOOKED_IN_CORE']),
+    D('dyn','Stage name','stagename',['Open','In progress','Closed won','Closed lost']),
+    D('dyn','OCC disposition','occ_disposition__c',['Interested','Not reachable','Not interested','Converted on call'],[1.2,0.6,0.4,1.6]),
+    D('dyn','Digital activity','digital_activeness_flag',['Active','Semi-active','Inactive'],[1.4,0.9,0.45])
+  ];
+  const byCode = {}; DEF.forEach(d => { byCode[d.code] = d; });
+  const hash = (str) => { let x = 7; for (let i = 0; i < str.length; i++) x = (x * 31 + str.charCodeAt(i)) >>> 0; return (x % 1000) / 1000; };
+  const meta = (d) => {
+    const w = d.opts.map(o => 0.5 + hash(d.code + o));
+    const sw = w.reduce((a, b) => a + b, 0);
+    return d.opts.map((o, j) => ({ val: o, share: w[j] / sw, q: d.q ? d.q[j] : 0.7 + 0.6 * hash(o + d.code) }));
+  };
+
+  // ------------------------------------------------------------------ state
+  const S = {
+    pgran: 'day', pDay: END, pWeek: Date.UTC(2026, 10, 8), pMonth: MK1, cFrom: END - 29 * DAY, cTo: END, cph: 'start', pcal: false, pcY: null, pcM: null,
+    tgran: 'day', tdFrom: END - 29 * DAY, tdTo: END, twFrom: Date.UTC(2026, 8, 1), twTo: Date.UTC(2026, 10, 8), tmFrom: MK0, tmTo: MK1, tph: 'start', tcal: false, tcY: null, tcM: null,
+    ex: false, q: '', f: {}, open: { pin: true }, sel: null, dd: null, ddq: '', ddFocus: false,
+    mixVar: 'unified_journey_channel__c', mixFrom: 0, mixTo: 6, fopen: false, fanim: false,
+    mgran: 'day', mdFrom: END - 29 * DAY, mdTo: END, mwFrom: Date.UTC(2026, 8, 1), mwTo: Date.UTC(2026, 10, 8), mmFrom: MK0, mmTo: MK1, mph: 'start', mcal: false, mcY: null, mcM: null,
+    tview: 'chart', tmode: 'ratio', metric: 'p1', num: 'bk', den: 'p1', hov: null
+  };
+  const set = (o) => { Object.assign(S, o); render(); };
+
+  // ------------------------------------------------------------------ compute view model
+  function compute() {
+    const s = S;
+    const applied = Object.keys(s.f).filter(c => s.f[c] && s.f[c].length);
+    let F = s.ex ? 0.97 : 1, Q = 1;
+    applied.forEach(c => {
+      const ms = meta(byCode[c]).filter(x => s.f[c].indexOf(x.val) >= 0);
+      const sh = ms.reduce((a, m) => a + m.share, 0);
+      F *= sh; Q *= ms.reduce((a, m) => a + m.share * m.q, 0) / (sh || 1);
+    });
+    const qf = Math.pow(Q, 0.35);
+    const fd = DAYS.map(d => {
+      const c = [d.c[0] * F];
+      for (let k = 1; k < 7; k++) c.push(c[k - 1] * Math.min(0.99, (d.c[k] / d.c[k - 1]) * qf));
+      c.push(c[6] * d.amtPer);
+      return c;
+    });
+    const toggleF = (code, val) => { const f = Object.assign({}, S.f); const cur = (f[code] || []).slice(); const k = cur.indexOf(val); if (k >= 0) cur.splice(k, 1); else cur.push(val); f[code] = cur; set({ f, hov: null }); };
+    const clearF = (code) => { const f = Object.assign({}, S.f); f[code] = []; set({ f, hov: null }); };
+    const qq = s.q.trim().toLowerCase();
+    const mkF = (d) => {
+      const cur = s.f[d.code] || [];
+      const open = s.dd === d.code;
+      const dq = (s.ddq || '').trim().toLowerCase();
+      const shownVals = open ? d.opts.filter(o => !dq || o.toLowerCase().indexOf(dq) >= 0) : [];
+      const summary = !cur.length ? 'Any value' : cur.length <= 2 ? cur.join(', ') : cur.slice(0, 2).join(', ') + ' +' + (cur.length - 2) + ' more';
+      return {
+        label: d.label, code: d.code, n: cur.length, total: d.opts.length, open, summary, clear: () => clearF(d.code),
+        toggle: () => set({ dd: S.dd === d.code ? null : d.code, ddq: '', ddFocus: S.dd !== d.code }),
+        sel: cur.slice(0, 8).map(v => ({ val: v, remove: () => toggleF(d.code, v) })), more: Math.max(0, cur.length - 8),
+        shown: shownVals.map(o => ({ val: o, on: cur.indexOf(o) >= 0, pick: () => toggleF(d.code, o) })),
+        shownN: shownVals.length,
+        selectShown: () => { const f = Object.assign({}, S.f); const c2 = (f[d.code] || []).slice(); shownVals.forEach(v => { if (c2.indexOf(v) < 0) c2.push(v); }); f[d.code] = c2; set({ f, hov: null }); },
+        close: () => set({ dd: null, ddq: '' })
+      };
+    };
+    const PIN = ['cibil_score_bkt','offer_amt_bkt','unified_journey_channel__c','digital_activeness_flag'];
+    const secDefs = [
+      { id: 'pin', name: 'Pinned', note: 'most used', list: PIN.map(c => byCode[c]) },
+      { id: 'chan', name: 'Channel and campaign', note: '', list: DEF.filter(d => d.g === 'chan' && PIN.indexOf(d.code) < 0) },
+      { id: 'cust', name: 'Customer and offer', note: '', list: DEF.filter(d => d.g === 'cust' && PIN.indexOf(d.code) < 0) },
+      { id: 'out', name: 'Outcome reasons', note: '', list: DEF.filter(d => d.g === 'out') },
+      { id: 'dyn', name: 'Dynamic', note: 'as of end date', list: DEF.filter(d => d.g === 'dyn' && PIN.indexOf(d.code) < 0) }
+    ];
+    const sections = secDefs.map(sd => {
+      const list = qq ? sd.list.filter(d => (d.label + ' ' + d.code).toLowerCase().indexOf(qq) >= 0) : sd.list;
+      const open = qq ? true : !!s.open[sd.id];
+      const active = sd.list.filter(d => s.f[d.code] && s.f[d.code].length).length;
+      return { name: sd.name, note: sd.note, items: list.map(mkF), show: list.length > 0, open, rot: open ? 90 : 0, active,
+        toggle: () => { const o = Object.assign({}, S.open); o[sd.id] = !o[sd.id]; set({ open: o }); } };
+    });
+    const chips = applied.map(c => { const v = s.f[c]; return { label: byCode[c].label, val: v.length > 2 ? v.slice(0, 2).join(', ') + ' +' + (v.length - 2) : v.join(', '), remove: () => clearF(c) }; });
+
+    // pickers
+    const buildCells = (y, m, o) => {
+      const first = Date.UTC(y, m, 1), dim = new Date(Date.UTC(y, m + 1, 0)).getUTCDate(), lead = (new Date(first).getUTCDay() + 6) % 7;
+      const out = [];
+      for (let k = 0; k < 42; k++) {
+        const dn = k - lead + 1;
+        if (dn < 1 || dn > dim) { out.push({ label: '', dis: true, aria: '', bg: 'transparent', fg: '#8A94A3', fw: 400, pick: () => {} }); continue; }
+        const t = Date.UTC(y, m, dn), dis = t < START || t > END, sel = o.sel(t), inR = !sel && o.inR(t);
+        out.push({ label: String(dn), dis, aria: WDN[new Date(t).getUTCDay()] + ' ' + ddy(t), fw: sel ? 600 : 400, bg: sel ? '#003874' : (inR ? '#E6EDF6' : 'transparent'), fg: dis ? '#B4BCC8' : (sel ? '#FFFFFF' : '#0E2240'), pick: () => o.pick(t) });
+      }
+      while (out.length > 35 && out.slice(-7).every(c => c.label === '')) out.splice(-7);
+      return out;
+    };
+    const buildNav = (k, setK) => ({ title: MONL[k % 12] + ' ' + Math.floor(k / 12), prevDis: k <= MK0, nextDis: k >= MK1, prev: () => setK(k - 1), next: () => setK(k + 1) });
+    const buildWeeks = (k, o) => {
+      const out = [];
+      for (let mon = mStart(k); mon <= mEnd(k); mon += 7 * DAY) {
+        const sun = wEnd(mon), dis = sun < START || mon > END, sel = o.sel(mon), inR = !sel && o.inR(mon);
+        const partial = !dis && (mon < START || sun > END);
+        out.push({ label: 'Week ' + wNo(mon) + ': ' + wSpan(mon), sub: dis ? 'No data' : (partial ? 'Data to ' + dd(Math.min(sun, END)) : (Math.round((sun - mon) / DAY) + 1) + ' days'), dis,
+          bg: sel ? '#003874' : (inR ? '#E6EDF6' : '#FFFFFF'), fg: sel ? '#FFFFFF' : (dis ? '#B4BCC8' : '#0E2240'), subFg: sel ? '#E6EDF6' : '#5A6472', border: sel ? '#003874' : '#E3E7ED', pick: () => o.pick(mon) });
+      }
+      return out;
+    };
+    const buildMonths = (o) => MON.map((label, m) => {
+      const k = 2026 * 12 + m, dis = k < MK0 || k > MK1, sel = o.sel(k), inR = !sel && o.inR(k);
+      return { label, dis, bg: sel ? '#003874' : (inR ? '#E6EDF6' : '#FFFFFF'), fg: sel ? '#FFFFFF' : (dis ? '#B4BCC8' : '#0E2240'), border: sel ? '#003874' : '#E3E7ED', pick: () => o.pick(k) };
+    });
+
+    // page period
+    const pg = s.pgran;
+    let pFrom, pTo, prevFrom, prevTo, prevName, pLabel;
+    if (pg === 'day') {
+      pFrom = pTo = s.pDay; prevFrom = prevTo = s.pDay - 7 * DAY; prevName = WDN[new Date(prevFrom).getUTCDay()] + ' ' + dd(prevFrom);
+      pLabel = WDN[new Date(s.pDay).getUTCDay()] + ', ' + ddy(s.pDay) + (s.pDay === END ? ' (latest)' : '');
+    } else if (pg === 'week') {
+      const mon = s.pWeek, we = wEnd(mon); pFrom = Math.max(mon, START); pTo = Math.min(we, END);
+      const pw = wPrev(mon); prevFrom = pw; prevTo = Math.min(pw + Math.round((pTo - pFrom) / DAY) * DAY, wEnd(pw));
+      const part = pTo < we;
+      prevName = 'previous week';
+      pLabel = wName(mon) + ' ' + new Date(mon).getUTCFullYear() + ' (' + wSpan(mon) + (part ? ', data to ' + dd(pTo) : '') + ')';
+    } else if (pg === 'month') {
+      const k = s.pMonth; pFrom = Math.max(mStart(k), START); pTo = Math.min(mEnd(k), END);
+      const len = Math.round((pTo - pFrom) / DAY);
+      prevFrom = mStart(k - 1); prevTo = Math.min(prevFrom + len * DAY, mEnd(k - 1));
+      const part = pTo < mEnd(k);
+      prevName = part ? 'same days of ' + MON[(k - 1) % 12] : MONL[(k - 1) % 12];
+      pLabel = MONL[k % 12] + ' ' + Math.floor(k / 12) + (part ? ' (1–' + new Date(pTo).getUTCDate() + ' ' + MON[k % 12] + ')' : '');
+    } else {
+      pFrom = Math.min(s.cFrom, s.cTo); pTo = Math.max(s.cFrom, s.cTo);
+      const L = Math.round((pTo - pFrom) / DAY) + 1;
+      prevTo = pFrom - DAY; prevFrom = prevTo - (L - 1) * DAY; prevName = 'previous ' + L + (L === 1 ? ' day' : ' days');
+      pLabel = (pFrom === pTo ? ddy(pFrom) : dd(pFrom) + ' – ' + ddy(pTo)) + ' (' + L + (L === 1 ? ' day)' : ' days)');
+    }
+    const sumR = (a, b) => { const t = [0,0,0,0,0,0,0,0]; for (let i = a; i <= b; i++) for (let k = 0; k < 8; k++) t[k] += fd[i][k]; return t; };
+    const tot = sumR(idx(pFrom), idx(pTo));
+    const prevTot = prevFrom >= START ? sumR(idx(prevFrom), idx(prevTo)) : null;
+
+    const pcK = s.pcY != null ? s.pcY * 12 + s.pcM : mKeyOf(pg === 'week' ? s.pWeek : pg === 'custom' ? s.cTo : s.pDay);
+    const pNav = buildNav(pcK, (k) => set({ pcY: Math.floor(k / 12), pcM: k % 12 }));
+    let pCells = [], pWeeks = [], pMonths = [], cEnds = [], cPresets = [], pTitle = '', pHint = '', pQuick = null;
+    if (pg === 'day') {
+      pTitle = 'Pick a day';
+      pCells = buildCells(Math.floor(pcK / 12), pcK % 12, { sel: (t) => t === s.pDay, inR: () => false, pick: (t) => set({ pDay: t, pcal: false }) });
+      pHint = 'One click picks the day.';
+      if (s.pDay !== END) pQuick = { label: 'Latest day', pick: () => set({ pDay: END, pcal: false, pcY: null, pcM: null }) };
+    } else if (pg === 'week') {
+      pTitle = 'Pick a week';
+      pWeeks = buildWeeks(pcK, { sel: (mon) => mon === s.pWeek, inR: () => false, pick: (mon) => set({ pWeek: mon, pcal: false }) });
+      pHint = 'Weeks run 1–7, 8–14, 15–21, 22–28 and 29 to month end.';
+      if (s.pWeek !== monOf(END)) pQuick = { label: 'Latest week', pick: () => set({ pWeek: monOf(END), pcal: false, pcY: null, pcM: null }) };
+    } else if (pg === 'month') {
+      pTitle = 'Pick a month';
+      pMonths = buildMonths({ sel: (k) => k === s.pMonth, inR: () => false, pick: (k) => set({ pMonth: k, pcal: false }) });
+      pHint = 'Months with data are July to November.';
+      if (s.pMonth !== MK1) pQuick = { label: 'Current month', pick: () => set({ pMonth: MK1, pcal: false }) };
+    } else {
+      pTitle = 'Pick a custom range';
+      const cf = Math.min(s.cFrom, s.cTo), ct = Math.max(s.cFrom, s.cTo), ph = s.cph;
+      pCells = buildCells(Math.floor(pcK / 12), pcK % 12, { sel: (t) => t === cf || t === ct, inR: (t) => t > cf && t < ct, pick: (t) => {
+        if (ph === 'start') set({ cFrom: t, cTo: t > ct ? t : ct, cph: 'end' });
+        else if (t < cf) set({ cFrom: t, cTo: cf, cph: 'start' });
+        else set({ cFrom: cf, cTo: t, cph: 'start' });
+      } });
+      cEnds = [['start', 'Start date', cf], ['end', 'End date', ct]].map(([id, label, t]) => ({ label, value: ddy(t), on: ph === id, pick: () => set({ cph: id, pcY: new Date(t).getUTCFullYear(), pcM: new Date(t).getUTCMonth() }) }));
+      cPresets = [['Last 7 days', 7], ['Last 30 days', 30], ['Last 90 days', 90], ['All data', N]].map(([label, k]) => {
+        const on = ct === END && Math.round((ct - cf) / DAY) + 1 === k;
+        return { label, on, pick: () => set({ cFrom: END - (k - 1) * DAY, cTo: END, cph: 'start' }) };
+      });
+      pHint = ph === 'start' ? 'Click a day to set the start date' : 'Now click a day to set the end date';
+    }
+    const pGrains = [['day', 'Daily'], ['week', 'Weekly'], ['month', 'Monthly'], ['custom', 'Custom']].map(([id, label]) => Object.assign({ label, on: pg === id,
+      pick: () => set({ pgran: id, pcal: id === 'custom', pcY: null, pcM: null, cph: 'start' }) }, pill(pg === id)));
+
+    // KPIs
+    const pctD = (a, b) => b ? (a / b - 1) * 100 : 0;
+    const e2e = tot[0] ? tot[6] / tot[0] * 100 : 0;
+    const pe2e = prevTot && prevTot[0] ? prevTot[6] / prevTot[0] * 100 : 0;
+    const kpi = (label, value, d, unit) => {
+      if (!prevTot) return { label, value, arrow: '', text: 'No earlier data to compare', blink: false, dc: '#5A6472' };
+      return { label, value, arrow: d >= 0 ? '▲' : '▼', text: (d >= 0 ? 'Up ' : 'Down ') + Math.abs(d).toFixed(1) + unit + ' vs ' + prevName, blink: true, dc: d >= 0 ? '#1B7F4E' : '#D0161E' };
+    };
+    const ez = 1 - Math.pow(1 - INTRO, 3);
+    const kpis = [
+      kpi('Offers generated', fmt(tot[0] * ez), prevTot ? pctD(tot[0], prevTot[0]) : 0, '%'),
+      kpi('End-to-end conversion', (e2e * ez).toFixed(1) + '%', e2e - pe2e, ' pp'),
+      kpi('Disbursal count', fmt(tot[6] * ez), prevTot ? pctD(tot[6], prevTot[6]) : 0, '%'),
+      kpi('Disbursed value', '₹' + (tot[7] * ez).toFixed(2) + ' Cr', prevTot ? pctD(tot[7], prevTot[7]) : 0, '%')
+    ];
+
+    // waterfall
+    const ct = tot.slice(0, 7);
+    let li = 1; for (let i = 2; i < 7; i++) if (ct[i - 1] - ct[i] > ct[li - 1] - ct[li]) li = i;
+    const sel = s.sel || li;
+    const SID = ['p1','p2','p2_3','p3','p3_4','p4','bk'];
+    const FILL = ['#003874','#1A4E88','#33649B','#4D7AAE','#6E93C0','#8DAAD0','#00254D'];
+    const fRows = SN.map((name, i) => {
+      const drop = i ? ct[i - 1] - ct[i] : 0;
+      const isLeak = i === li, on = i === sel;
+      return {
+        name, delay: i * 90, count: fmt(ct[i]), w: (ct[i] / (ct[0] || 1) * 100 * 0.78).toFixed(1), fill: FILL[i],
+        hasDrop: i > 0, dw: (drop / (ct[0] || 1) * 100 * 0.78).toFixed(1), drop: '−' + fmt(drop), isLeak,
+        n: i + 1, pct: (ct[i] / (ct[0] || 1) * 100).toFixed(0) + '%', step: i ? '▼ ' + ((1 - ct[i] / (ct[i - 1] || 1)) * 100).toFixed(0) + '%' : 'Entry',
+        on, clickable: i > 0,
+        pick: () => { if (i) set({ sel: i, tmode: 'ratio', num: SID[i], den: SID[i - 1], tview: 'chart', hov: null }); }
+      };
+    });
+
+    // generic range model (own grain + start/end picker), keys prefixed by p
+    const rangeModel = (p) => {
+      const K = (n) => p + n, g = s[K('gran')], ph = s[K('ph')];
+      const navSaved = s[K('cY')] != null ? s[K('cY')] * 12 + s[K('cM')] : null;
+      const pick = (fk, tk) => (v) => {
+        const a = Math.min(S[K(fk)], S[K(tk)]), b = Math.max(S[K(fk)], S[K(tk)]), o = {};
+        if (S[K('ph')] === 'start') { o[K(fk)] = v; o[K(tk)] = v > b ? v : b; o[K('ph')] = 'end'; }
+        else if (v < a) { o[K(fk)] = v; o[K(tk)] = a; o[K('ph')] = 'start'; }
+        else { o[K(fk)] = a; o[K(tk)] = v; o[K('ph')] = 'start'; }
+        set(o);
+      };
+      const endsOf = (a, b, fmtE, navOf) => [['start', 'Start', a], ['end', 'End', b]].map(([id, lab, v]) => ({
+        label: lab + (g === 'day' ? ' date' : g === 'week' ? ' week' : ' month'), value: fmtE(v), on: ph === id,
+        pick: () => { const o = {}; o[K('ph')] = id; const k = navOf(v); if (k != null) { o[K('cY')] = Math.floor(k / 12); o[K('cM')] = k % 12; } set(o); } }));
+      let A, B, label, units, cells = [], weeks = [], months = [], ends = [], chips = [], cK = MK1;
+      if (g === 'day') {
+        const a = Math.min(s[K('dFrom')], s[K('dTo')]), b = Math.max(s[K('dFrom')], s[K('dTo')]);
+        A = idx(a); B = idx(b); units = B - A + 1;
+        label = (a === b ? ddy(a) : dd(a) + ' – ' + ddy(b)) + ' (' + units + (units === 1 ? ' day)' : ' days)');
+        cK = navSaved != null ? navSaved : mKeyOf(b);
+        cells = buildCells(Math.floor(cK / 12), cK % 12, { sel: (t) => t === a || t === b, inR: (t) => t > a && t < b, pick: pick('dFrom', 'dTo') });
+        ends = endsOf(a, b, ddy, mKeyOf);
+        chips = [7, 14, 30, 90].map(k => ({ label: k + 'D', on: b === END && Math.round((b - a) / DAY) + 1 === k, pick: () => { const o = {}; o[K('dFrom')] = END - (k - 1) * DAY; o[K('dTo')] = END; set(o); } }));
+      } else if (g === 'week') {
+        const a = Math.min(s[K('wFrom')], s[K('wTo')]), b = Math.max(s[K('wFrom')], s[K('wTo')]);
+        A = idx(Math.max(a, START)); B = idx(Math.min(wEnd(b), END)); units = 1; for (let w = b; w > a && units < 60; w = wPrev(w)) units++;
+        label = wName(a) + ' – ' + wName(b) + ' ' + new Date(b).getUTCFullYear() + ' (' + units + (units === 1 ? ' week)' : ' weeks)');
+        cK = navSaved != null ? navSaved : mKeyOf(b);
+        weeks = buildWeeks(cK, { sel: (w) => w === a || w === b, inR: (w) => w > a && w < b, pick: pick('wFrom', 'wTo') });
+        ends = endsOf(a, b, (v) => wName(v) + ' (' + wSpan(v) + ')', (v) => mKeyOf(v));
+        const lastW = monOf(END), firstW = monOf(START);
+        const back = (k) => { let w = lastW; for (let j = 1; j < k; j++) w = wPrev(w); return w; };
+        chips = [['4W', 4], ['8W', 8], ['12W', 12], ['All', 0]].map(([lab, k]) => { const from = k ? back(k) : firstW; return { label: lab, on: b === lastW && a === from, pick: () => { const o = {}; o[K('wFrom')] = from; o[K('wTo')] = lastW; set(o); } }; });
+      } else {
+        const a = Math.min(s[K('mFrom')], s[K('mTo')]), b = Math.max(s[K('mFrom')], s[K('mTo')]);
+        A = idx(Math.max(mStart(a), START)); B = idx(Math.min(mEnd(b), END)); units = b - a + 1;
+        label = (a === b ? MONL[a % 12] : MON[a % 12] + ' – ' + MON[b % 12]) + ' ' + Math.floor(b / 12) + ' (' + units + (units === 1 ? ' month)' : ' months)');
+        months = buildMonths({ sel: (k) => k === a || k === b, inR: (k) => k > a && k < b, pick: pick('mFrom', 'mTo') });
+        ends = endsOf(a, b, (k) => MONL[k % 12] + ' ' + Math.floor(k / 12), () => null);
+        chips = [['This month', MK1], ['3M', MK1 - 2], ['All', MK0]].map(([lab, from]) => ({ label: lab, on: b === MK1 && a === from, pick: () => { const o = {}; o[K('mFrom')] = from; o[K('mTo')] = MK1; set(o); } }));
+      }
+      return {
+        g, A, B, label, cells, weeks, months, ends, chips,
+        nav: buildNav(cK, (k) => { const o = {}; o[K('cY')] = Math.floor(k / 12); o[K('cM')] = k % 12; set(o); }),
+        hint: ph === 'start' ? 'Click to set the start' : 'Now click to set the end',
+        grains: [['day', 'Daily'], ['week', 'Weekly'], ['month', 'Monthly']].map(([id, lab]) => Object.assign({ label: lab, on: g === id, pick: () => { const o = {}; o[K('gran')] = id; o[K('ph')] = 'start'; o[K('cY')] = null; o[K('cM')] = null; set(o); } }, pill(g === id))),
+        open: !!s[K('cal')], toggle: () => { const o = {}; o[K('cal')] = !S[K('cal')]; o[K('ph')] = 'start'; set(o); }
+      };
+    };
+
+    // segment mix sunburst (own period + page filters)
+    const MR = rangeModel('m');
+    const mtot = sumR(MR.A, MR.B);
+    const mixD = byCode[s.mixVar] || byCode['unified_journey_channel__c'];
+    const mF = Math.min(s.mixFrom, 5), mT = Math.max(s.mixTo, mF + 1);
+    const selV = s.f[mixD.code] && s.f[mixD.code].length ? s.f[mixD.code] : null;
+    const mm = meta(mixD).filter(m => !selV || selV.indexOf(m.val) >= 0);
+    const shSum = mm.reduce((a, m) => a + m.share, 0) || 1;
+    let mrows = mm.map(m => {
+      const c = [mtot[0] * m.share / shSum];
+      for (let k = 1; k < 7; k++) c.push(c[k - 1] * Math.min(0.99, (mtot[k] / (mtot[k - 1] || 1)) * Math.pow(m.q, 0.35)));
+      return { k: m.val, a: c[mF], b: c[mT] };
+    }).sort((x, y) => y.a - x.a);
+    if (mrows.length > 8) {
+      const top = mrows.slice(0, 7), rest = mrows.slice(7);
+      top.push({ k: 'Others (' + rest.length + ')', a: rest.reduce((q, r) => q + r.a, 0), b: rest.reduce((q, r) => q + r.b, 0) });
+      mrows = top;
+    }
+    const MA = mrows.reduce((q, r) => q + r.a, 0), MB = mrows.reduce((q, r) => q + r.b, 0);
+    mrows.forEach(r => { r.r = r.a ? r.b / r.a * 100 : 0; r.sh = MA ? r.a / MA * 100 : 0; });
+    const mix = {
+      range: MR, rows: mrows, A: MA, B: MB, rate: MA ? MB / MA * 100 : 0, from: mF, to: mT, varCode: mixD.code, varLabel: mixD.label, filtered: !!selV,
+      vars: DEF.filter(d => d.code !== 'funnel_stage'),
+      setVar: (e) => set({ mixVar: e.target.value }),
+      setFrom: (e) => { const v = +e.target.value; set({ mixFrom: v, mixTo: Math.max(S.mixTo, v + 1) }); },
+      setTo: (e) => set({ mixTo: +e.target.value })
+    };
+
+    // trend range
+    const tg = s.tgran;
+    let tA, tB, tLabel, tUnits;
+    if (tg === 'day') {
+      const a = Math.min(s.tdFrom, s.tdTo), b = Math.max(s.tdFrom, s.tdTo);
+      tA = idx(a); tB = idx(b); tUnits = tB - tA + 1;
+      tLabel = (a === b ? ddy(a) : dd(a) + ' – ' + ddy(b)) + ' (' + tUnits + (tUnits === 1 ? ' day)' : ' days)');
+    } else if (tg === 'week') {
+      const a = Math.min(s.twFrom, s.twTo), b = Math.max(s.twFrom, s.twTo);
+      tA = idx(Math.max(a, START)); tB = idx(Math.min(wEnd(b), END)); tUnits = 1; for (let w = b; w > a && tUnits < 60; w = wPrev(w)) tUnits++;
+      tLabel = wName(a) + ' – ' + wName(b) + ' ' + new Date(b).getUTCFullYear() + ' (' + tUnits + (tUnits === 1 ? ' week)' : ' weeks)');
+    } else {
+      const a = Math.min(s.tmFrom, s.tmTo), b = Math.max(s.tmFrom, s.tmTo);
+      tA = idx(Math.max(mStart(a), START)); tB = idx(Math.min(mEnd(b), END)); tUnits = b - a + 1;
+      tLabel = (a === b ? MONL[a % 12] : MON[a % 12] + ' – ' + MON[b % 12]) + ' ' + Math.floor(b / 12) + ' (' + tUnits + (tUnits === 1 ? ' month)' : ' months)');
+    }
+    const tL = tB - tA + 1;
+    const ttot = sumR(tA, tB);
+    const tprev = tA - tL >= 0 ? sumR(tA - tL, tA - 1) : null;
+    const tPrevName = tg === 'week' ? 'previous ' + tUnits + (tUnits === 1 ? ' week' : ' weeks') : 'previous ' + tL + (tL === 1 ? ' day' : ' days');
+
+    const tph = s.tph;
+    const rangePick = (fromKey, toKey) => (v) => {
+      const a = Math.min(S[fromKey], S[toKey]), b = Math.max(S[fromKey], S[toKey]);
+      const o = { hov: null };
+      if (S.tph === 'start') { o[fromKey] = v; o[toKey] = v > b ? v : b; o.tph = 'end'; }
+      else if (v < a) { o[fromKey] = v; o[toKey] = a; o.tph = 'start'; }
+      else { o[fromKey] = a; o[toKey] = v; o.tph = 'start'; }
+      set(o);
+    };
+    let tCells = [], tWeeks = [], tMonths = [], tEnds = [], tChips = [], tcK;
+    const endsOf = (a, b, fmtE, navOf) => [['start', 'Start', a], ['end', 'End', b]].map(([id, label, v]) => ({ label: label + (tg === 'day' ? ' date' : tg === 'week' ? ' week' : ' month'), value: fmtE(v), on: tph === id,
+      pick: () => { const o = { tph: id }; const k = navOf(v); if (k != null) { o.tcY = Math.floor(k / 12); o.tcM = k % 12; } set(o); } }));
+    if (tg === 'day') {
+      const a = Math.min(s.tdFrom, s.tdTo), b = Math.max(s.tdFrom, s.tdTo);
+      tcK = s.tcY != null ? s.tcY * 12 + s.tcM : mKeyOf(b);
+      tCells = buildCells(Math.floor(tcK / 12), tcK % 12, { sel: (t) => t === a || t === b, inR: (t) => t > a && t < b, pick: rangePick('tdFrom', 'tdTo') });
+      tEnds = endsOf(a, b, ddy, mKeyOf);
+      tChips = [7, 14, 30, 90].map(k => { const on = b === END && Math.round((b - a) / DAY) + 1 === k; return { label: k + 'D', on, pick: () => set({ tdFrom: END - (k - 1) * DAY, tdTo: END, hov: null }) }; });
+    } else if (tg === 'week') {
+      const a = Math.min(s.twFrom, s.twTo), b = Math.max(s.twFrom, s.twTo);
+      tcK = s.tcY != null ? s.tcY * 12 + s.tcM : mKeyOf(b);
+      tWeeks = buildWeeks(tcK, { sel: (mon) => mon === a || mon === b, inR: (mon) => mon > a && mon < b, pick: rangePick('twFrom', 'twTo') });
+      tEnds = endsOf(a, b, (v) => wName(v) + ' (' + wSpan(v) + ')', (v) => mKeyOf(v));
+      const lastMon = monOf(END), firstMon = monOf(START);
+      const back = (k) => { let w = lastMon; for (let j = 1; j < k; j++) w = wPrev(w); return w; };
+      tChips = [['4W', 4], ['8W', 8], ['12W', 12], ['All', 0]].map(([label, k]) => {
+        const from = k ? back(k) : firstMon;
+        return { label, on: b === lastMon && a === from, pick: () => set({ twFrom: from, twTo: lastMon, hov: null }) };
+      });
+    } else {
+      const a = Math.min(s.tmFrom, s.tmTo), b = Math.max(s.tmFrom, s.tmTo);
+      tMonths = buildMonths({ sel: (k) => k === a || k === b, inR: (k) => k > a && k < b, pick: rangePick('tmFrom', 'tmTo') });
+      tEnds = endsOf(a, b, (k) => MONL[k % 12] + ' ' + Math.floor(k / 12), () => null);
+      tChips = [['3M', MK1 - 2], ['All', MK0]].map(([label, from]) => ({ label, on: b === MK1 && a === from, pick: () => set({ tmFrom: from, tmTo: MK1, hov: null }) }));
+      tcK = MK1;
+    }
+    const tHint = tph === 'start' ? 'Click to set the start' : 'Now click to set the end';
+    const tNav = buildNav(tcK, (k) => set({ tcY: Math.floor(k / 12), tcM: k % 12 }));
+    const tGrains = [['day', 'Daily'], ['week', 'Weekly'], ['month', 'Monthly']].map(([id, label]) => Object.assign({ label, on: tg === id, pick: () => set({ tgran: id, hov: null, tph: 'start', tcY: null, tcM: null }) }, pill(tg === id)));
+
+    // measure
+    const MET = [
+      { id: 'p1', label: 'Offers generated', k: 0 }, { id: 'p2', label: 'Offers reviewed', k: 1 }, { id: 'p2_3', label: 'Offers selected', k: 2 },
+      { id: 'p3', label: 'Offers accepted', k: 3 }, { id: 'p3_4', label: 'Disbursals initiated', k: 4 }, { id: 'p4', label: 'Disbursals completed', k: 5 },
+      { id: 'bk', label: 'Disbursal count (booked)', k: 6 }, { id: 'amt', label: 'Disbursed value (₹ Cr)', k: 7 }
+    ];
+    const mById = (id) => MET.find(m => m.id === id) || MET[0];
+    const isRatio = s.tmode === 'ratio';
+    const mN = mById(isRatio ? s.num : s.metric), mD = mById(s.den === 'amt' ? 'p1' : s.den);
+    const kind = isRatio ? (mN.k === 7 ? 'ticket' : 'pct') : (mN.k === 7 ? 'amt' : 'count');
+    const val = (v) => isRatio ? (v[mD.k] ? (mN.k === 7 ? v[7] * 1e7 / v[mD.k] : v[mN.k] / v[mD.k] * 100) : null) : v[mN.k];
+    const fmtV = (x) => x == null ? '—' : kind === 'count' ? fmt(x) : kind === 'amt' ? '₹' + x.toFixed(2) + ' Cr' : kind === 'pct' ? x.toFixed(1) + '%' : '₹' + (x / 1000).toFixed(1) + 'K';
+    const RP = [['Offer → booked', 'bk', 'p1'], ['Review rate', 'p2', 'p1'], ['Selection rate', 'p2_3', 'p2'], ['Acceptance rate', 'p3', 'p2_3'], ['Disbursal success', 'bk', 'p3_4'], ['Average ticket', 'amt', 'bk']];
+    const rpHit = RP.find(r => r[1] === mN.id && r[2] === mD.id);
+    const mTitle = isRatio ? (rpHit ? rpHit[0] + ' (' + mN.label + ' ÷ ' + mD.label + ')' : mN.label + ' ÷ ' + mD.label) : mN.label;
+    const shortName = isRatio ? (rpHit ? rpHit[0] : mN.label + ' ÷ ' + mD.label) : mN.label;
+    const grainWord = tg === 'day' ? 'day' : tg === 'week' ? 'week' : 'month';
+
+    const bucketize = (a, b) => {
+      const out = []; let cur = null;
+      for (let i = a; i <= b; i++) {
+        const t = START + i * DAY, d = new Date(t);
+        let key, label, bs = t, be = t;
+        if (tg === 'day') { key = i; label = dd(t); }
+        else if (tg === 'week') { bs = monOf(t); be = wEnd(bs); key = bs; label = 'W' + wNo(bs) + ' ' + MON[new Date(bs).getUTCMonth()]; }
+        else { key = mKeyOf(t); bs = mStart(key); be = mEnd(key); label = MON[d.getUTCMonth()] + ' ' + d.getUTCFullYear(); }
+        if (!cur || cur.key !== key) { cur = { key, label, v: [0,0,0,0,0,0,0,0], partial: bs < START + a * DAY || be > START + b * DAY }; out.push(cur); }
+        for (let k = 0; k < 8; k++) cur.v[k] += fd[i][k];
+      }
+      return out;
+    };
+    const bk = bucketize(tA, tB);
+    const vals = bk.map(b => val(b.v));
+    const n = bk.length;
+    const agg = val(ttot), pagg = tprev ? val(tprev) : null;
+    const isCountish = kind === 'count' || kind === 'amt';
+    const avgV = isCountish ? agg / n : agg;
+
+    // chart
+    const X0 = 56, X1 = 736, Y0 = 30, Y1 = 258;
+    const pool = vals.concat([avgV]).filter(x => x != null);
+    let lo = Math.min.apply(null, pool), hi = Math.max.apply(null, pool);
+    if (isCountish) lo = 0;
+    if (hi <= lo) hi = lo + (hi || 1) * 0.1;
+    const niceStep = (r) => { const raw = r / 4; const p = Math.pow(10, Math.floor(Math.log10(raw))); const m = raw / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p; };
+    const stp = niceStep(hi - lo);
+    const dataMax = hi;
+    lo = Math.max(0, Math.floor(lo / stp) * stp);
+    hi = Math.ceil(hi / stp) * stp;
+    if (hi - dataMax < stp * 0.3) hi += stp;
+    if (hi <= lo) hi = lo + stp;
+    const xAt = (i) => n === 1 ? (X0 + X1) / 2 : X0 + i * (X1 - X0) / (n - 1);
+    const yAt = (v) => Y1 - (v - lo) / (hi - lo) * (Y1 - Y0);
+    const tickFmt = (v) => kind === 'pct' ? v.toFixed(stp < 1 ? 1 : 0) + '%'
+      : kind === 'count' ? (v >= 1000 ? (v / 1000).toFixed(stp % 1000 ? 1 : 0) + 'K' : v.toFixed(0))
+      : kind === 'amt' ? '₹' + v.toFixed(stp < 0.1 ? 2 : stp < 1 ? 1 : 0)
+      : '₹' + (v / 1000).toFixed(stp < 1000 ? 1 : 0) + 'K';
+    const yTicks = [];
+    for (let v = lo, g = 0; v <= hi + stp * 0.01 && g < 12; v += stp, g++) yTicks.push({ y: yAt(v).toFixed(1), yp: (yAt(v) / 300 * 100).toFixed(2), label: tickFmt(v) });
+    const ptFmt = (v) => v == null ? '' : kind === 'pct' ? v.toFixed(1) + '%' : kind === 'count' ? (v >= 1000 ? (v / 1000).toFixed(1) + 'K' : fmt(v)) : kind === 'amt' ? v.toFixed(2) : (v / 1000).toFixed(1) + 'K';
+    const linePts = vals.map((v, i) => xAt(i).toFixed(1) + ',' + yAt(v == null ? lo : v).toFixed(1)).join(' ');
+    const areaPts = n ? xAt(0).toFixed(1) + ',' + Y1 + ' ' + linePts + ' ' + xAt(n - 1).toFixed(1) + ',' + Y1 : '';
+    const hovOn = s.hov != null && s.hov < n;
+    const hovI = hovOn ? s.hov : n - 1;
+    const dots = vals.map((v, i) => ({ x: xAt(i).toFixed(1), y: yAt(v == null ? lo : v).toFixed(1), r: hovOn && i === hovI ? 5 : (n <= 62 ? 3 : 0), fill: hovOn && i === hovI ? '#00254D' : '#003874' }));
+    const step = n > 1 ? (X1 - X0) / (n - 1) : (X1 - X0);
+    const hits = bk.map((b, i) => ({ x: (xAt(i) - step / 2).toFixed(1), w: step.toFixed(1), enter: () => { if (S.hov !== i) set({ hov: i }); } }));
+    const lstep = Math.max(1, Math.ceil(n / 8));
+    const xLabels = bk.map((b, i) => ({ xp: (xAt(i) / 760 * 100).toFixed(2), label: b.label, show: i % lstep === 0 })).filter(x => x.show);
+    const liveV = vals.map((v, i) => ({ v, i })).filter(x => x.v != null);
+    const hiB = liveV.slice().sort((a, b) => b.v - a.v)[0], loB = liveV.slice().sort((a, b) => a.v - b.v)[0];
+    const lblEvery = n <= 40 ? 1 : Math.ceil(n / 30);
+    const ptLabels = vals.map((v, i) => {
+      if (v == null) return null;
+      const isExt = (hiB && i === hiB.i) || (loB && i === loB.i) || i === n - 1;
+      if (i % lblEvery !== 0 && !isExt) return null;
+      const nb = [vals[i - 1], vals[i + 1]].filter(x => x != null);
+      const above = nb.length ? v >= nb.reduce((a, b) => a + b, 0) / nb.length : true;
+      return { xp: (xAt(i) / 760 * 100).toFixed(2), yp: (yAt(v) / 300 * 100).toFixed(2), text: ptFmt(v), tf: above ? 'translate(-50%, calc(-100% - 7px))' : 'translate(-50%, 7px)' };
+    }).filter(x => x);
+    const hb = bk[hovI];
+    let tip = null;
+    if (s.tview === 'chart' && hovOn && hb) {
+      const xp = xAt(hovI) / 760 * 100, yp = yAt(vals[hovI] == null ? lo : vals[hovI]) / 300 * 100;
+      const dv = vals[hovI] - avgV;
+      const tx = xp > 78 ? 'calc(-100% - 14px)' : (xp < 22 ? '14px' : '-50%');
+      const ty = tx === '-50%' ? (yp < 45 ? '18px' : 'calc(-100% - 14px)') : '-50%';
+      tip = { left: xp.toFixed(2), top: yp.toFixed(2), tf: 'translate(' + tx + ', ' + ty + ')',
+        date: (tg === 'week' ? wName(hb.key) + ' (' + wSpan(hb.key) + ')' : hb.label) + (hb.partial ? ' (part)' : ''),
+        rows: [{ k: shortName, v: fmtV(vals[hovI]), c: '#FFFFFF' }] };
+      if (isRatio) {
+        tip.rows.push({ k: mN.label, v: mN.k === 7 ? '₹' + hb.v[7].toFixed(2) + ' Cr' : fmt(hb.v[mN.k]), c: '#FFFFFF' });
+        tip.rows.push({ k: mD.label, v: fmt(hb.v[mD.k]), c: '#FFFFFF' });
+      }
+      tip.rows.push({ k: 'vs average', v: (dv >= 0 ? '▲ ' : '▼ ') + (kind === 'pct' ? Math.abs(dv).toFixed(1) + ' pp' : (avgV ? Math.abs(dv / avgV * 100).toFixed(1) + '%' : '—')), c: dv >= 0 ? '#7FD8A6' : '#FF9A92' });
+    }
+    const avgLabel = (isCountish ? 'Avg per ' + grainWord + ' ' : 'Period ') + fmtV(avgV);
+    let cmpTxt = '';
+    if (pagg != null && agg != null) {
+      const d = kind === 'pct' ? agg - pagg : pctD(agg, pagg);
+      cmpTxt = ', ' + (d >= 0 ? 'up ' : 'down ') + Math.abs(d).toFixed(1) + (kind === 'pct' ? ' pp' : '%') + ' on the ' + tPrevName;
+    }
+    const tRangeShort = tLabel.split(' (')[0];
+    const headline = (isCountish ? shortName + ' totalled ' : shortName + ' was ') + fmtV(agg) + ' for ' + tRangeShort + cmpTxt + '.';
+
+    // table
+    const COLS = [['Offers', 0], ['Reviewed', 1], ['Selected', 2], ['Accepted', 3], ['Disb. initiated', 4], ['Disb. completed', 5], ['Disbursal count', 6], ['₹ Cr', 7]];
+    const hlK = isRatio ? -1 : mN.k;
+    const HL = '#E6EDF6';
+    const thead = [{ label: tg === 'day' ? 'Date' : tg === 'week' ? 'Week' : 'Month', align: 'left', bg: '#F7F9FC' }]
+      .concat(COLS.map(c => ({ label: c[0], align: 'right', bg: c[1] === hlK ? HL : '#F7F9FC' })))
+      .concat([{ label: 'Offer → booked', align: 'right', bg: '#F7F9FC' }])
+      .concat(isRatio ? [{ label: shortName, align: 'right', bg: HL }] : []);
+    const rowOf = (label, v, bold, bg) => ({ bg, cells: [{ text: label, align: 'left', fw: 600, bg: 'transparent' }]
+      .concat(COLS.map(c => ({ text: c[1] === 7 ? v[7].toFixed(2) : fmt(v[c[1]]), align: 'right', fw: bold || c[1] === hlK ? 600 : 400, bg: c[1] === hlK ? HL : 'transparent' })))
+      .concat([{ text: v[0] ? (v[6] / v[0] * 100).toFixed(1) + '%' : '—', align: 'right', fw: bold ? 600 : 400, bg: 'transparent' }])
+      .concat(isRatio ? [{ text: fmtV(val(v)), align: 'right', fw: 600, bg: HL }] : []) });
+    const trows = bk.slice().reverse().map(b => rowOf(b.label + (b.partial ? ' *' : ''), b.v, false, 'transparent')).concat([rowOf('Total', ttot, true, '#EEF1F5')]);
+
+    const tviews = [['chart', 'Line graph', 'M3 17l6-6 4 4 8-8'], ['table', 'Table', 'M3 5h18v14H3zM3 10h18M3 15h18M9 5v14']].map(([id, label, icon]) => Object.assign({ label, icon, on: s.tview === id, pick: () => set({ tview: id }) }, pill(s.tview === id)));
+    const tmodes = [['single', 'One measure'], ['ratio', 'Ratio of two']].map(([id, label]) => Object.assign({ label, on: s.tmode === id, pick: () => set({ tmode: id, hov: null }) }, pill2(s.tmode === id)));
+    const rPresets = RP.map(([label, a, b]) => ({ label, on: mN.id === a && mD.id === b, pick: () => set({ num: a, den: b, hov: null }) }));
+
+    return {
+      pg, pGrains, pLabel, pTitle, pQuick, pNav, pCells, pWeeks, pMonths, cEnds, cPresets, pHint,
+      kpis, chips, applied, sections, fRows, mix, pLabel2: pLabel,
+      tg, tGrains, tLabel, tChips, tEnds, tNav, tCells, tWeeks, tMonths, tHint,
+      tviews, tmodes, isRatio, mN, mD, MET, rPresets,
+      headline, chartAria: mTitle + ' by ' + grainWord + ' for ' + tRangeShort,
+      yTicks, areaPts, linePts, dots, avgY: yAt(avgV).toFixed(1), avgYp: (yAt(avgV) / 300 * 100).toFixed(2), avgLabel, ptLabels, tip,
+      hx: hovOn ? xAt(hovI).toFixed(1) : '-20', xLabels, hits,
+      thead, trows
+    };
+  }
+
+  // ------------------------------------------------------------------ rendering helpers
+  let H = [];
+  const on = (fn) => { H.push(fn); return H.length - 1; };
+  const CAL_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0E2240" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg>';
+  const CHEV = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5A6472" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>';
+  const WEEKDAYS = ['Mo','Tu','We','Th','Fr','Sa','Su'];
+
+  const navHTML = (nv) => `<div style="display:flex;align-items:center;justify-content:space-between">
+    <button type="button" data-click="${on(nv.prev)}" ${nv.prevDis ? 'disabled' : ''} aria-label="Previous month" style="width:36px;height:36px;border:1px solid #E3E7ED;border-radius:6px;background:#FFFFFF;cursor:pointer;opacity:${nv.prevDis ? 0.4 : 1}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E2240" stroke-width="2.5" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></button>
+    <strong style="font-size:14px">${esc(nv.title)}</strong>
+    <button type="button" data-click="${on(nv.next)}" ${nv.nextDis ? 'disabled' : ''} aria-label="Next month" style="width:36px;height:36px;border:1px solid #E3E7ED;border-radius:6px;background:#FFFFFF;cursor:pointer;opacity:${nv.nextDis ? 0.4 : 1}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E2240" stroke-width="2.5" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button>
+  </div>`;
+  const cellsHTML = (cells) => `<div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;font-size:11px;color:#5A6472;text-align:center">${WEEKDAYS.map(w => `<span style="padding:4px 0">${w}</span>`).join('')}</div>
+    <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px">${cells.map(c => `<button type="button" data-click="${on(c.pick)}" ${c.dis ? 'disabled' : ''} aria-label="${esc(c.aria)}" style="height:38px;border:0;border-radius:6px;font-size:13px;cursor:pointer;background:${c.bg};color:${c.fg};font-weight:${c.fw}">${esc(c.label)}</button>`).join('')}</div>`;
+  const weeksHTML = (ws) => `<div style="display:flex;flex-direction:column;gap:6px">${ws.map(w => `<button type="button" data-click="${on(w.pick)}" ${w.dis ? 'disabled' : ''} style="display:flex;justify-content:space-between;align-items:center;text-align:left;border-radius:8px;padding:0 12px;min-height:44px;cursor:pointer;border:1px solid ${w.border};background:${w.bg};color:${w.fg}"><strong style="font-size:13px">${esc(w.label)}</strong><span style="font-size:11px;color:${w.subFg}">${esc(w.sub)}</span></button>`).join('')}</div>`;
+  const monthsHTML = (ms) => `<strong style="font-size:14px;text-align:center">2026</strong>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px">${ms.map(m => `<button type="button" data-click="${on(m.pick)}" ${m.dis ? 'disabled' : ''} style="min-height:44px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid ${m.border};background:${m.bg};color:${m.fg}">${esc(m.label)}</button>`).join('')}</div>`;
+  const endsHTML = (ends) => `<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px">${ends.map(e => `<button type="button" data-click="${on(e.pick)}" aria-pressed="${e.on}" style="text-align:left;border-radius:8px;padding:8px 12px;cursor:pointer;border:2px solid ${e.on ? '#003874' : '#E3E7ED'};background:${e.on ? '#E6EDF6' : '#FFFFFF'};color:#0E2240"><span style="display:block;font-size:11px;color:#5A6472">${esc(e.label)}</span><strong style="font-size:14px">${esc(e.value)}</strong></button>`).join('')}</div>`;
+  const doneRow = (hint, fn) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid #E3E7ED;padding-top:10px;font-size:12px;color:#5A6472"><span>${esc(hint)}</span><button type="button" data-click="${on(fn)}" style="font-size:13px;font-weight:600;min-height:36px;padding:0 16px;border-radius:6px;border:0;background:#003874;color:#FFFFFF;cursor:pointer">Done</button></div>`;
+  const popStyle = 'position:absolute;z-index:40;width:380px;max-width:92vw;background:#FFFFFF;border:1px solid #D5DDE8;border-radius:12px;box-shadow:0 10px 28px rgba(27,36,48,0.16);padding:16px;display:flex;flex-direction:column;gap:12px';
+  const card = 'background:#FFFFFF;border:1px solid #E1E7F0;border-radius:16px;box-shadow:0 1px 2px rgba(0,37,77,0.05),0 10px 30px rgba(0,37,77,0.06)';
+  const selStyle = 'border:1px solid #003874;border-radius:6px;padding:0 8px;min-height:38px;background:#FFFFFF;color:#0E2240;font-size:13px;font-weight:600';
+
+  // ------------------------------------------------------------------ segment mix sunburst
+  const STAGE_NAMES = ['Offer generated','Offer reviewed','Offer selected','Offer accepted','Disb. initiated','Disb. completed','Booked in core'];
+  const KC = ['#003874','#ED1C24','#3D8BD1','#D98E04','#0F9C8C','#7A55C7','#5C7FA8','#D1477A'];
+  const KS = ['#D6E2F1','#FCD9DA','#DCEBF8','#F8EACC','#CDEEEA','#E5DCF5','#E1E8F1','#F7D9E4'];
+  function mixSvg(M) {
+    const W = 820, H = 440, cx = W / 2, cy = H / 2 - 4, R = 150;
+    const P = (r, a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+    const sec = (r0, r1, a0, a1) => {
+      const big = a1 - a0 > Math.PI ? 1 : 0, [x1, y1] = P(r1, a0), [x2, y2] = P(r1, a1), [x3, y3] = P(r0, a1), [x4, y4] = P(r0, a0);
+      return `M${x1.toFixed(2)},${y1.toFixed(2)} A${r1},${r1} 0 ${big} 1 ${x2.toFixed(2)},${y2.toFixed(2)} L${x3.toFixed(2)},${y3.toFixed(2)} A${r0},${r0} 0 ${big} 0 ${x4.toFixed(2)},${y4.toFixed(2)} Z`;
+    };
+    let a = -Math.PI / 2;
+    const sl = M.rows.map((r, i) => { const a0 = a, a1 = a + r.sh / 100 * 2 * Math.PI; a = a1; return { r, i, a0, a1, mid: (a0 + a1) / 2 }; });
+    const r0 = R * 0.44, r1 = R * 0.72, r2 = R * 0.78, r3 = R, pad = 0.012;
+    let out = `<circle cx="${cx}" cy="${cy}" r="${r3 + 12}" fill="#EEF2F8"></circle><circle cx="${cx}" cy="${cy}" r="${r0 - 6}" fill="#FFFFFF"></circle>`;
+    sl.forEach(o => {
+      const span = o.a1 - o.a0, p = span > 4 * pad ? pad : 0, a0 = o.a0 + p, a1 = o.a1 - p, aB = a0 + (a1 - a0) * Math.min(100, o.r.r) / 100;
+      const c = KC[o.i % 8], cs = KS[o.i % 8];
+      const tip = `${o.r.k}: ${fmt(o.r.a)} at ${STAGE_NAMES[M.from]} (${o.r.sh.toFixed(1)}% of total), ${fmt(o.r.b)} reached ${STAGE_NAMES[M.to]} (${o.r.r.toFixed(1)}%)`;
+      out += `<g><title>${esc(tip)}</title>
+        <path d="${sec(r0, r1, a0, a1)}" fill="${cs}"></path>
+        <path d="${sec(r0, r0 + 4, a0, a1)}" fill="${c}"></path>
+        <path d="${sec(r2, r3, a0, a1)}" fill="#F1F4F8" stroke="#E1E7F0" stroke-width="1"></path>
+        <path class="${FIRST ? 'areaIn' : ''}" d="${sec(r2, r3 + 7, a0, aB)}" fill="${c}"></path>`;
+      if (span > 0.28) { const [tx, ty] = P((r0 + r1) / 2 + 2, o.mid); out += `<text x="${tx.toFixed(1)}" y="${(ty + 5).toFixed(1)}" text-anchor="middle" font-size="15" font-weight="700" fill="${c}">${Math.round(o.r.sh)}%</text>`; }
+      if (aB - a0 > 0.17) { const [tx, ty] = P((r2 + r3 + 7) / 2, (a0 + aB) / 2); out += `<text x="${tx.toFixed(1)}" y="${(ty + 4).toFixed(1)}" text-anchor="middle" font-size="12" font-weight="700" fill="#FFFFFF">${Math.round(o.r.r)}%</text>`; }
+      out += `</g>`;
+    });
+    out += `<text x="${cx}" y="${cy - 18}" text-anchor="middle" font-size="12" font-weight="600" fill="#55657A">Overall</text>
+      <text x="${cx}" y="${cy + 12}" text-anchor="middle" font-size="32" font-weight="700" fill="#003874">${M.rate.toFixed(1)}%</text>
+      <text x="${cx}" y="${cy + 31}" text-anchor="middle" font-size="11.5" fill="#55657A">${fmt(M.B)} of ${fmt(M.A)}</text>`;
+    // side labels with leader lines, pushed apart vertically
+    ['L', 'R'].forEach(side => {
+      const list = sl.filter(o => (Math.cos(o.mid) >= 0) === (side === 'R')).map(o => ({ o, y: cy + (R + 22) * Math.sin(o.mid) })).sort((x, y) => x.y - y.y);
+      for (let i = 1; i < list.length; i++) if (list[i].y - list[i - 1].y < 46) list[i].y = list[i - 1].y + 46;
+      const over = list.length ? list[list.length - 1].y - (H - 34) : 0; if (over > 0) list.forEach(it => it.y -= over); if (list.length && list[0].y < 18) { const d = 18 - list[0].y; list.forEach(it => it.y += d); }
+      list.forEach(({ o, y }) => {
+        const [ex, ey] = P(R + 10, o.mid), [kx, ky] = P(R + 22, o.mid), tx = side === 'R' ? cx + R + 40 : cx - R - 40, anchor = side === 'R' ? 'start' : 'end';
+        out += `<polyline points="${ex.toFixed(1)},${ey.toFixed(1)} ${kx.toFixed(1)},${ky.toFixed(1)} ${tx + (side === 'R' ? -6 : 6)},${y.toFixed(1)}" fill="none" stroke="#B4BCC8" stroke-width="1"></polyline>
+          <text x="${tx}" y="${(y - 2).toFixed(1)}" text-anchor="${anchor}" font-size="15" font-weight="700" fill="${KC[o.i % 8]}">${esc(o.r.k.length > 22 ? o.r.k.slice(0, 21) + '…' : o.r.k)}</text>
+          <text x="${tx}" y="${(y + 17).toFixed(1)}" text-anchor="${anchor}" font-size="13" fill="#6B7A8F"><tspan font-weight="700" fill="#0E2240">${o.r.r.toFixed(1)}%</tspan>  ·  ${fmt(o.r.b)} of ${fmt(o.r.a)}</text>`;
+      });
+    });
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Sunburst: share of ${esc(STAGE_NAMES[M.from])} by ${esc(M.varLabel)} and conversion to ${esc(STAGE_NAMES[M.to])}" style="width:100%;height:auto;display:block;font-family:inherit">${out}</svg>`;
+  }
+  function mixSection(V) {
+    const M = V.mix, R = M.range;
+    const lblS = 'display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:#55657A';
+    const sel = 'border:1px solid #003874;border-radius:8px;padding:0 10px;min-height:40px;background:#FFFFFF;color:#0E2240;font-size:13px;font-weight:600';
+    const best = M.rows.slice().sort((a, b) => b.r - a.r)[0], big = M.rows[0];
+    const head = M.rows.length ? `${esc(best.k)} converts best at ${best.r.toFixed(1)}%; ${esc(big.k)} holds the most volume (${Math.round(big.sh)}%) at ${big.r.toFixed(1)}%.` : 'No data for this selection.';
+    return `<section style="${card};padding:22px 24px;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px">
+        <div><h2 style="margin:0;font-size:16px;font-weight:700;color:#003874">Mix and conversion by segment</h2>
+        <p style="margin:2px 0 0;font-size:12px;color:#55657A">Inner ring: share of ${esc(STAGE_NAMES[M.from])} by ${esc(M.varLabel)}. Outer arc: how much of each reached ${esc(STAGE_NAMES[M.to])}. ${esc(R.label)}${M.filtered ? ', limited to your selected values' : ''}.</p></div>
+      </div>
+      <div style="position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:#F7F9FC;border:1px solid #E3E7ED;border-radius:10px;padding:10px 14px">
+        <div role="group" aria-label="Segment period grain" style="display:flex;border:1px solid #0E2240;border-radius:8px;overflow:hidden">${R.grains.map(g => `<button type="button" data-click="${on(g.pick)}" aria-pressed="${g.on}" style="font-size:13px;font-weight:600;border:0;padding:0 14px;min-height:38px;cursor:pointer;background:${g.bg};color:${g.fg}">${g.label}</button>`).join('')}</div>
+        <button type="button" data-click="${on(R.toggle)}" aria-expanded="${R.open}" aria-haspopup="dialog" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;min-height:38px;padding:0 14px;border-radius:8px;border:1px solid ${R.open ? '#003874' : '#D5DDE8'};background:#FFFFFF;color:#0E2240;cursor:pointer">${CAL_ICON}<span>${esc(R.label)}</span>${CHEV}</button>
+        <div role="group" aria-label="Quick ranges" style="display:flex;flex-wrap:wrap;gap:4px;margin-left:auto">${R.chips.map(c => `<button type="button" data-click="${on(c.pick)}" aria-pressed="${c.on}" style="font-size:12px;font-weight:600;border-radius:6px;padding:0 12px;min-height:32px;cursor:pointer;border:1px solid ${c.on ? '#0E2240' : '#D5DDE8'};background:${c.on ? '#0E2240' : '#FFFFFF'};color:${c.on ? '#FFFFFF' : '#0E2240'}">${c.label}</button>`).join('')}</div>
+        ${R.open ? `<div role="dialog" aria-label="Choose the segment period" style="${popStyle};top:56px;left:0">${endsHTML(R.ends)}${R.g !== 'month' ? navHTML(R.nav) : ''}${R.g === 'day' ? cellsHTML(R.cells) : R.g === 'week' ? weeksHTML(R.weeks) : monthsHTML(R.months)}${doneRow(R.hint, R.toggle)}</div>` : ''}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:center">
+        <div style="flex:1 1 300px;max-width:400px;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;flex-direction:column;gap:12px;background:#F7F9FC;border:1px solid #E1E7F0;border-radius:12px;padding:14px">
+            <label style="${lblS}">1. Split by<select data-change="${on(M.setVar)}" style="${sel}">${M.vars.map(d => `<option value="${d.code}" ${d.code === M.varCode ? 'selected' : ''}>${esc(d.label)} (${esc(d.code)})</option>`).join('')}</select></label>
+            <label style="${lblS}">2. From stage<select data-change="${on(M.setFrom)}" style="${sel}">${STAGE_NAMES.slice(0, 6).map((n, i) => `<option value="${i}" ${i === M.from ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+            <label style="${lblS}">3. To stage<select data-change="${on(M.setTo)}" style="${sel}">${STAGE_NAMES.map((n, i) => i > M.from ? `<option value="${i}" ${i === M.to ? 'selected' : ''}>${n}</option>` : '').join('')}</select></label>
+          </div>
+          <p aria-live="polite" style="margin:0;font-size:17px;line-height:25px;font-weight:600;color:#0E2240">${head}</p>
+          <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:#55657A">
+            <span style="display:flex;align-items:center;gap:8px"><span style="width:12px;height:12px;border-radius:3px;background:#D6E2F1"></span>Inner ring: share at ${esc(STAGE_NAMES[M.from])}</span>
+            <span style="display:flex;align-items:center;gap:8px"><span style="width:12px;height:12px;border-radius:3px;background:#003874"></span>Outer arc: reached ${esc(STAGE_NAMES[M.to])}</span>
+            <span style="display:flex;align-items:center;gap:8px"><span style="width:12px;height:12px;border-radius:3px;background:#F1F4F8;border:1px solid #E1E7F0"></span>Did not reach it</span>
+            <span style="margin-top:4px">Labels read <strong style="color:#0E2240">conversion</strong> · ${esc(STAGE_NAMES[M.to])} of ${esc(STAGE_NAMES[M.from])}</span>
+          </div>
+        </div>
+        <div style="flex:999 1 560px;min-width:0;overflow-x:auto"><div style="min-width:640px;max-width:960px;margin:0 auto">${mixSvg(M)}</div></div>
+      </div>
+      ${M.rows.length ? `<div style="overflow-x:auto;border:1px solid #E1E7F0;border-radius:12px">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums;min-width:620px">
+          <thead><tr style="background:#F7F9FC;color:#55657A;font-size:12px;text-align:right">
+            <th scope="col" style="text-align:left;padding:10px 14px;font-weight:600">${esc(M.varLabel)}</th>
+            <th scope="col" style="padding:10px 14px;font-weight:600">${esc(STAGE_NAMES[M.from])}</th>
+            <th scope="col" style="padding:10px 14px;font-weight:600">Share of total</th>
+            <th scope="col" style="padding:10px 14px;font-weight:600">${esc(STAGE_NAMES[M.to])}</th>
+            <th scope="col" style="padding:10px 14px;font-weight:600">Conversion</th>
+          </tr></thead>
+          <tbody>${M.rows.map((r, i) => `<tr style="border-top:1px solid #EEF2F7;text-align:right;color:#0E2240">
+            <th scope="row" style="text-align:left;padding:9px 14px;font-weight:600"><span style="display:inline-flex;align-items:center;gap:8px"><span style="width:10px;height:10px;border-radius:3px;background:${KC[i % 8]}"></span>${esc(r.k)}</span></th>
+            <td style="padding:9px 14px">${fmt(r.a)}</td><td style="padding:9px 14px;color:#55657A">${r.sh.toFixed(1)}%</td>
+            <td style="padding:9px 14px">${fmt(r.b)}</td><td style="padding:9px 14px;font-weight:700;color:${KC[i % 8]}">${r.r.toFixed(1)}%</td></tr>`).join('')}
+            <tr style="border-top:2px solid #003874;background:#E6EDF6;text-align:right;color:#003874;font-weight:700">
+              <th scope="row" style="text-align:left;padding:10px 14px">Total</th><td style="padding:10px 14px">${fmt(M.A)}</td><td style="padding:10px 14px">100%</td><td style="padding:10px 14px">${fmt(M.B)}</td><td style="padding:10px 14px">${M.rate.toFixed(1)}%</td></tr>
+          </tbody></table></div>` : ''}
+    </section>`;
+  }
+
+  function view(V) {
+    const togglePcal = () => set({ pcal: !S.pcal, cph: 'start' });
+    const toggleTcal = () => set({ tcal: !S.tcal, tph: 'start' });
+
+    // ---- header + page picker
+    let pPop = '';
+    if (S.pcal) {
+      let body = '';
+      if (V.pg === 'custom') {
+        body += endsHTML(V.cEnds);
+        body += `<div style="display:flex;flex-wrap:wrap;gap:6px">${V.cPresets.map(p => `<button type="button" data-click="${on(p.pick)}" style="font-size:12px;min-height:30px;padding:0 10px;border-radius:15px;border:1px solid ${p.on ? '#003874' : '#D5DDE8'};background:${p.on ? '#E6EDF6' : '#FFFFFF'};color:${p.on ? '#00254D' : '#0E2240'};cursor:pointer">${esc(p.label)}</button>`).join('')}</div>`;
+      }
+      if (V.pg !== 'month') body += navHTML(V.pNav);
+      if (V.pg === 'day' || V.pg === 'custom') body += cellsHTML(V.pCells);
+      if (V.pg === 'week') body += weeksHTML(V.pWeeks);
+      if (V.pg === 'month') body += monthsHTML(V.pMonths);
+      pPop = `<div role="dialog" aria-label="${esc(V.pTitle)}" style="${popStyle};right:0;top:calc(100% + 8px)">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><strong style="font-size:14px">${esc(V.pTitle)}</strong>${V.pQuick ? `<button type="button" data-click="${on(V.pQuick.pick)}" style="font-size:12px;font-weight:600;min-height:32px;padding:0 12px;border-radius:16px;border:1px solid #003874;background:#FFFFFF;color:#003874;cursor:pointer">${esc(V.pQuick.label)}</button>` : ''}</div>
+        ${body}${doneRow(V.pHint, togglePcal)}</div>`;
+    }
+    const header = `<header style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:20px;background:#003874;color:#FFFFFF;border-radius:18px;padding:20px 24px;border-bottom:5px solid #ED1C24;box-shadow:0 14px 36px rgba(0,37,77,0.22)">
+      <div style="display:flex;align-items:center;gap:16px">
+        <div style="width:64px;height:64px;border-radius:16px;background:#FFFFFF;display:flex;align-items:center;justify-content:center;padding:8px;flex:none;box-shadow:0 0 0 3px rgba(255,255,255,0.18)"><img src="data:image/png;base64,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" alt="Kotak Mahindra Bank logo" style="width:100%;height:100%;object-fit:contain"></div>
+        <div><h1 style="margin:0;font-size:30px;line-height:36px;font-weight:700;color:#FFFFFF;letter-spacing:-0.01em">PL-PA overall</h1><p style="margin:2px 0 0;font-size:14px;color:#C9D6EA">Personal loan, pre-approved journey funnel</p></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;position:relative;background:#FFFFFF;border-radius:12px;padding:6px;color:#0E2240">
+        <div role="group" aria-label="Period type" style="display:flex;border:1px solid #0E2240;border-radius:8px;overflow:hidden">${V.pGrains.map(g => `<button type="button" data-click="${on(g.pick)}" aria-pressed="${g.on}" style="font-size:13px;font-weight:600;border:0;padding:0 16px;min-height:40px;cursor:pointer;background:${g.bg};color:${g.fg}">${g.label}</button>`).join('')}</div>
+        <button type="button" data-click="${on(togglePcal)}" aria-expanded="${S.pcal}" aria-haspopup="dialog" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;min-height:40px;padding:0 14px;border-radius:8px;border:1px solid ${S.pcal ? '#003874' : '#0E2240'};background:#FFFFFF;color:#0E2240;cursor:pointer">${CAL_ICON}<span>${esc(V.pLabel)}</span>${CHEV}</button>
+        ${pPop}
+      </div></header>`;
+
+    // ---- KPIs
+    const kpis = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">${V.kpis.map((k, ki) => `<div class="lift" style="${card};padding:18px 22px">
+      <div style="font-size:13px;color:#5A6472">${esc(k.label)}</div>
+      <div data-kpi="${ki}" style="font-size:34px;line-height:42px;font-weight:700;margin-top:4px;color:#003874;font-variant-numeric:tabular-nums;letter-spacing:-0.01em">${esc(k.value)}</div>
+      <div style="font-size:12px;font-weight:600;color:${k.dc};display:flex;align-items:baseline;gap:5px"><span class="${k.blink ? 'blink' : ''}" aria-hidden="true">${k.arrow}</span><span>${esc(k.text)}</span></div></div>`).join('')}</div>`;
+
+    // ---- applied chips
+    const clearAll = () => set({ f: {}, hov: null });
+    const chipRow = `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12px;min-height:32px">${V.applied.length ? `<span style="color:#5A6472">Filtered by</span>${V.chips.map(c => `<button type="button" data-click="${on(c.remove)}" aria-label="Remove filter ${esc(c.label)} ${esc(c.val)}" style="font-size:12px;display:flex;align-items:center;gap:6px;background:#E6EDF6;color:#00254D;border:0;border-radius:14px;padding:0 10px;min-height:28px;cursor:pointer"><span>${esc(c.label)}</span><strong>${esc(c.val)}</strong><span aria-hidden="true" style="font-size:14px">×</span></button>`).join('')}<button type="button" data-click="${on(clearAll)}" style="font-size:12px;color:#003874;background:none;border:0;min-height:28px;cursor:pointer">Clear all</button>` : '<span style="color:#5A6472">No filters applied.</span>'}<button type="button" data-click="${on(() => set({ fopen: true, fanim: true }))}" style="font-size:12px;font-weight:700;margin-left:auto;color:#003874;background:#E6EDF6;border:0;border-radius:999px;min-height:30px;padding:0 12px;cursor:pointer">Edit filters</button></div>`;
+
+    // ---- funnel
+    const funnel = `<section style="${card};padding:18px 20px">
+      <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:14px"><h2 style="margin:0;font-size:16px;font-weight:600">Stage funnel</h2><span style="font-size:12px;color:#5A6472">Bar = reached. Notch = dropped at that step. Click a stage to plot its step conversion below.</span></div>
+      <div style="overflow-x:auto"><div style="min-width:640px;display:flex;flex-direction:column;gap:6px">
+      <div aria-hidden="true" style="display:grid;grid-template-columns:180px 92px minmax(0,1fr) 170px;gap:16px;padding:0 12px 6px;border-bottom:1px solid #E1E7F0;font-size:11px;font-weight:600;color:#5A6472;letter-spacing:.02em">
+        <span>Stage</span><span style="text-align:right">CRNs</span><span>Reached, then dropped</span><span style="text-align:right">Of offers / drop at step</span>
+      </div>
+      ${V.fRows.map(r => `<button class="frow" type="button" data-click="${on(r.pick)}" aria-pressed="${r.on}" style="display:grid;grid-template-columns:180px 92px minmax(0,1fr) 170px;gap:16px;align-items:center;width:100%;text-align:left;border:0;border-radius:10px;padding:8px 12px;background:${r.on ? '#EEF2F8' : 'transparent'};cursor:${r.clickable ? 'pointer' : 'default'};color:#0E2240">
+        <span style="display:flex;align-items:center;gap:10px;min-width:0">
+          <span style="flex:none;width:24px;height:24px;border-radius:12px;background:${r.on ? '#003874' : '#E6EDF6'};color:${r.on ? '#FFFFFF' : '#003874'};font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">${r.n}</span>
+          <span style="font-size:14px;font-weight:${r.on ? 700 : 500};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name)}</span>
+        </span>
+        <span style="text-align:right;font-size:18px;font-weight:700;color:#003874;font-variant-numeric:tabular-nums;letter-spacing:-0.01em">${r.count}</span>
+        <span style="display:flex;align-items:center;gap:6px;min-width:0">
+          <span class="${FIRST ? 'grow' : ''}" style="animation-delay:${r.delay}ms;width:${r.w}%;min-width:10px;height:22px;border-radius:6px;background:${r.fill}"></span>
+          ${r.hasDrop ? `<span class="${r.isLeak ? (FIRST ? 'pulse' : 'pulse2') : (FIRST ? 'notch' : '')}" style="width:${r.dw}%;min-width:58px;height:22px;border-radius:6px;border:1.5px dashed ${r.isLeak ? '#D0161E' : '#B4BCC8'};background:${r.isLeak ? '#FDE8E9' : '#F7F9FC'};color:${r.isLeak ? '#D0161E' : '#5A6472'};font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap">${r.drop}${r.isLeak ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="#D0161E" aria-hidden="true"><path d="M12 3l10 18H2z"></path></svg>' : ''}</span>` : ''}
+        </span>
+        <span style="display:flex;align-items:center;justify-content:flex-end;gap:10px">
+          <span style="font-size:18px;font-weight:700;color:#0E2240;font-variant-numeric:tabular-nums">${r.pct}</span>
+          <span style="min-width:58px;text-align:center;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;border-radius:999px;padding:3px 10px;background:${r.isLeak ? '#D0161E' : (r.n === 1 ? '#E6EDF6' : '#F1F3F7')};color:${r.isLeak ? '#FFFFFF' : (r.n === 1 ? '#003874' : '#5A6472')}">${r.step}</span>
+        </span>
+      </button>`).join('')}</div></div></section>`;
+
+    // ---- trend controls
+    let tPop = '';
+    if (S.tcal) {
+      let body = endsHTML(V.tEnds);
+      if (V.tg !== 'month') body += navHTML(V.tNav);
+      if (V.tg === 'day') body += cellsHTML(V.tCells);
+      if (V.tg === 'week') body += weeksHTML(V.tWeeks);
+      if (V.tg === 'month') body += monthsHTML(V.tMonths);
+      tPop = `<div role="dialog" aria-label="Choose the trend range" style="${popStyle};top:50px;left:0">${body}${doneRow(V.tHint, toggleTcal)}</div>`;
+    }
+    const measureCtl = V.isRatio
+      ? `<label style="display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:#5A6472;flex:1 1 190px">Numerator<select data-change="${on((e) => set({ num: e.target.value, hov: null }))}" style="${selStyle}">${V.MET.map(m => `<option value="${m.id}" ${m.id === V.mN.id ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}</select></label>
+         <span aria-hidden="true" style="font-size:22px;line-height:38px;color:#5A6472">÷</span>
+         <label style="display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:#5A6472;flex:1 1 190px">Denominator<select data-change="${on((e) => set({ den: e.target.value, hov: null }))}" style="${selStyle}">${V.MET.filter(m => m.id !== 'amt').map(m => `<option value="${m.id}" ${m.id === V.mD.id ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}</select></label>
+         <div style="flex:1 1 100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center"><span style="font-size:12px;color:#5A6472">Common ratios</span>${V.rPresets.map(p => `<button type="button" data-click="${on(p.pick)}" aria-pressed="${p.on}" style="font-size:12px;border-radius:14px;padding:0 10px;min-height:30px;cursor:pointer;border:1px solid ${p.on ? '#003874' : '#D5DDE8'};background:${p.on ? '#E6EDF6' : '#FFFFFF'};color:${p.on ? '#00254D' : '#0E2240'}">${esc(p.label)}</button>`).join('')}</div>`
+      : `<label style="display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:#5A6472;flex:1 1 220px">Measure<select data-change="${on((e) => set({ metric: e.target.value, hov: null }))}" style="${selStyle}">${V.MET.map(m => `<option value="${m.id}" ${m.id === V.mN.id ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}</select></label>`;
+
+    const controls = `<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;background:#F7F9FC;border:1px solid #E3E7ED;border-radius:10px;padding:12px 14px">
+      <div style="flex:1 1 100%;position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:10px;border-bottom:1px solid #E3E7ED;padding-bottom:12px">
+        <div role="group" aria-label="Trend grain" style="display:flex;border:1px solid #0E2240;border-radius:8px;overflow:hidden">${V.tGrains.map(g => `<button type="button" data-click="${on(g.pick)}" aria-pressed="${g.on}" style="font-size:13px;font-weight:600;border:0;padding:0 14px;min-height:38px;cursor:pointer;background:${g.bg};color:${g.fg}">${g.label}</button>`).join('')}</div>
+        <button type="button" data-click="${on(toggleTcal)}" aria-expanded="${S.tcal}" aria-haspopup="dialog" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;min-height:38px;padding:0 14px;border-radius:8px;border:1px solid ${S.tcal ? '#003874' : '#D5DDE8'};background:#FFFFFF;color:#0E2240;cursor:pointer">${CAL_ICON}<span>${esc(V.tLabel)}</span>${CHEV}</button>
+        <div role="group" aria-label="Quick ranges" style="display:flex;flex-wrap:wrap;gap:4px;margin-left:auto">${V.tChips.map(c => `<button type="button" data-click="${on(c.pick)}" aria-pressed="${c.on}" style="font-size:12px;font-weight:600;border-radius:6px;padding:0 12px;min-height:32px;cursor:pointer;border:1px solid ${c.on ? '#0E2240' : '#D5DDE8'};background:${c.on ? '#0E2240' : '#FFFFFF'};color:${c.on ? '#FFFFFF' : '#0E2240'}">${c.label}</button>`).join('')}</div>
+        ${tPop}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;font-weight:600;color:#5A6472">Plot</span><div role="group" aria-label="Plot type" style="display:flex;background:#FFFFFF;border:1px solid #E3E7ED;border-radius:6px;padding:2px">${V.tmodes.map(m => `<button type="button" data-click="${on(m.pick)}" aria-pressed="${m.on}" style="font-size:12px;font-weight:600;border:0;border-radius:4px;padding:0 12px;min-height:34px;cursor:pointer;background:${m.bg};color:${m.fg}">${m.label}</button>`).join('')}</div></div>
+      ${measureCtl}
+    </div>`;
+
+    // ---- chart / table
+    let body = '';
+    if (S.tview === 'chart') {
+      const t = V.tip;
+      body = `<div style="overflow-x:auto"><div style="position:relative;min-width:540px">
+        <svg data-leave="${on(() => { if (S.hov != null) set({ hov: null }); })}" viewBox="0 0 760 300" role="img" aria-label="${esc(V.chartAria)}" style="width:100%;height:auto;display:block">
+          <defs><linearGradient id="trendArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#003874" stop-opacity="0.28"></stop><stop offset="1" stop-color="#003874" stop-opacity="0.03"></stop></linearGradient></defs>
+          ${V.yTicks.map(y => `<line x1="56" x2="736" y1="${y.y}" y2="${y.y}" stroke="#E3E7ED"></line>`).join('')}
+          <polygon class="${FIRST ? 'areaIn' : ''}" points="${V.areaPts}" fill="url(#trendArea)"></polygon>
+          <line x1="56" x2="736" y1="${V.avgY}" y2="${V.avgY}" stroke="#ED1C24" stroke-width="1.5" stroke-dasharray="6 4"></line>
+          <polyline class="${FIRST ? 'draw' : ''}" pathLength="1" points="${V.linePts}" fill="none" stroke="#003874" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+          ${V.dots.map(d => `<circle class="${FIRST ? 'areaIn' : ''}" cx="${d.x}" cy="${d.y}" r="${d.r}" fill="${d.fill}" stroke="#FFFFFF" stroke-width="1.5"></circle>`).join('')}
+          <line x1="${V.hx}" x2="${V.hx}" y1="26" y2="258" stroke="#0E2240" stroke-width="1" stroke-dasharray="2 3"></line>
+          ${V.hits.map(h => { const id = on(h.enter); return `<rect data-hover="${id}" data-click="${id}" x="${h.x}" y="16" width="${h.w}" height="248" fill="transparent"></rect>`; }).join('')}
+        </svg>
+        ${V.yTicks.map(y => `<span aria-hidden="true" style="position:absolute;left:0;width:6.3%;padding-right:6px;text-align:right;top:${y.yp}%;transform:translateY(-50%);font-size:11px;color:#5A6472;pointer-events:none;white-space:nowrap">${esc(y.label)}</span>`).join('')}
+        ${V.xLabels.map(x => `<span aria-hidden="true" style="position:absolute;left:${x.xp}%;top:89%;transform:translateX(-50%);font-size:11px;color:#5A6472;pointer-events:none;white-space:nowrap">${esc(x.label)}</span>`).join('')}
+        <span style="position:absolute;right:3.2%;top:${V.avgYp}%;transform:translateY(-120%);font-size:11px;font-weight:600;color:#D0161E;background:rgba(255,255,255,0.85);padding:0 4px;border-radius:3px;pointer-events:none;white-space:nowrap">${esc(V.avgLabel)}</span>
+        ${V.ptLabels.map(p => `<span class="${FIRST ? 'areaIn' : ''}" aria-hidden="true" style="position:absolute;left:${p.xp}%;top:${p.yp}%;transform:${p.tf};font-size:10px;font-weight:600;color:#00254D;background:rgba(255,255,255,0.85);padding:0 2px;border-radius:2px;pointer-events:none;white-space:nowrap">${esc(p.text)}</span>`).join('')}
+        ${t ? `<div role="status" style="position:absolute;left:${t.left}%;top:${t.top}%;transform:${t.tf};z-index:5;pointer-events:none;background:#00254D;color:#FFFFFF;border-radius:8px;padding:8px 12px;box-shadow:0 6px 18px rgba(27,36,48,0.25);font-size:12px;line-height:18px;white-space:nowrap;min-width:150px"><div style="font-weight:600;font-size:13px;margin-bottom:2px">${esc(t.date)}</div>${t.rows.map(r => `<div style="display:flex;justify-content:space-between;gap:16px"><span style="color:#C9D2DE">${esc(r.k)}</span><strong style="color:${r.c}">${esc(r.v)}</strong></div>`).join('')}</div>` : ''}
+      </div></div>`;
+    } else {
+      body = `<div style="overflow:auto;max-height:420px;border:1px solid #E3E7ED;border-radius:10px">
+        <table style="border-collapse:collapse;width:100%;min-width:980px;font-size:12px;font-variant-numeric:tabular-nums">
+          <thead><tr>${V.thead.map(h => `<th scope="col" style="position:sticky;top:0;background:${h.bg};text-align:${h.align};padding:10px;font-weight:600;color:#0E2240;border-bottom:1px solid #D5DDE8;white-space:nowrap">${esc(h.label)}</th>`).join('')}</tr></thead>
+          <tbody>${V.trows.map(r => `<tr style="background:${r.bg}">${r.cells.map(c => `<td style="padding:8px 10px;text-align:${c.align};font-weight:${c.fw};background:${c.bg};border-bottom:1px solid #EEF1F5;white-space:nowrap">${esc(c.text)}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table></div>
+        <p style="margin:0;font-size:11px;color:#5A6472">Newest first. The highlighted column is the measure you picked. Rows marked * are part-periods.</p>`;
+    }
+    const trend = `<section style="${card};padding:18px 20px;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px">
+        <div><h2 style="margin:0;font-size:16px;font-weight:600">Trend over time</h2><p style="margin:2px 0 0;font-size:12px;color:#5A6472">Has its own period and dates, separate from the page selection above.</p></div>
+        <div role="group" aria-label="Trend view" style="display:flex;border:1px solid #0E2240;border-radius:8px;overflow:hidden">${V.tviews.map(v => `<button type="button" data-click="${on(v.pick)}" aria-pressed="${v.on}" style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;border:0;padding:0 14px;min-height:38px;cursor:pointer;background:${v.bg};color:${v.fg}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="${v.icon}"></path></svg>${v.label}</button>`).join('')}</div>
+      </div>
+      ${controls}
+      <p aria-live="polite" style="margin:0;font-size:18px;line-height:26px;font-weight:600;max-width:860px">${esc(V.headline)}</p>
+      ${body}
+    </section>`;
+
+    // ---- filters
+    const CHECK = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>';
+    const closeF = () => set({ fopen: false, dd: null, ddq: '' });
+    const filters = `<section id="filters" aria-label="Filters" style="background:#FFFFFF;min-height:100%">
+      <div style="position:sticky;top:0;z-index:5;background:#003874;color:#FFFFFF;padding:16px 18px;padding-top:calc(16px + env(safe-area-inset-top, 0px));display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"></path></svg>
+          <h2 style="margin:0;font-size:16px;font-weight:700">Filters</h2>
+          ${V.applied.length ? `<span style="font-size:11px;font-weight:700;background:#ED1C24;color:#FFFFFF;border-radius:999px;padding:2px 9px">${V.applied.length} active</span>` : ''}
+        </div>
+        <button type="button" data-click="${on(clearAll)}" style="font-size:12px;font-weight:600;color:#FFFFFF;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.3);border-radius:8px;min-height:32px;padding:0 12px;cursor:pointer;margin-left:auto">Reset all</button>
+        <button type="button" data-click="${on(closeF)}" aria-label="Close filters" style="flex:none;width:34px;height:34px;border-radius:8px;border:0;background:rgba(255,255,255,0.12);color:#FFFFFF;cursor:pointer;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+      </div>
+      <div style="padding:14px 18px;display:flex;flex-direction:column;gap:12px;border-bottom:1px solid #E1E7F0;background:#F7F9FC">
+        <button type="button" role="switch" aria-checked="${S.ex}" data-click="${on(() => set({ ex: !S.ex }))}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;background:none;border:0;padding:0;cursor:pointer;color:#0E2240;text-align:left;min-height:32px">
+          <span style="font-size:13px;font-weight:600">Exclude deactivated CRNs</span>
+          <span aria-hidden="true" style="flex:none;width:40px;height:22px;border-radius:11px;background:${S.ex ? '#003874' : '#C5CEDB'};position:relative;transition:background-color .2s ease"><span style="position:absolute;top:3px;left:${S.ex ? 21 : 3}px;width:16px;height:16px;border-radius:8px;background:#FFFFFF;box-shadow:0 1px 3px rgba(0,0,0,0.25);transition:left .2s ease"></span></span>
+        </button>
+        <label style="position:relative;display:block"><span class="sr">Search filters</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5A6472" stroke-width="2" aria-hidden="true" style="position:absolute;left:12px;top:13px"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
+          <input id="fsearch" type="search" placeholder="Search 22 filters" value="${esc(S.q)}" data-input="${on((e) => set({ q: e.target.value }))}" style="width:100%;border:1px solid #D5DDE8;border-radius:10px;padding:0 12px 0 34px;min-height:40px;font-size:13px;color:#0E2240;background:#FFFFFF"></label>
+      </div>
+      ${V.sections.filter(sec => sec.show).map(sec => `<div style="border-bottom:1px solid #E1E7F0">
+        <button type="button" data-click="${on(sec.toggle)}" aria-expanded="${sec.open}" style="width:100%;display:flex;align-items:center;gap:10px;padding:0 18px;min-height:48px;background:${sec.open ? '#FFFFFF' : '#FFFFFF'};border:0;cursor:pointer;color:#0E2240;text-align:left">
+          <span style="flex:1;display:flex;align-items:baseline;gap:8px;min-width:0"><span style="font-size:14px;font-weight:700">${esc(sec.name)}</span><span style="font-size:11px;color:#5A6472">${esc(sec.note)}</span></span>
+          ${sec.active ? `<span style="font-size:11px;font-weight:700;background:#003874;color:#FFFFFF;border-radius:999px;padding:2px 8px">${sec.active}</span>` : ''}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#003874" stroke-width="2.5" aria-hidden="true" style="transform:rotate(${sec.open ? 180 : 0}deg);transition:transform .2s ease"><path d="M6 9l6 6 6-6"></path></svg>
+        </button>
+        ${sec.open ? `<div style="display:flex;flex-direction:column;gap:4px;padding:0 12px 14px">${sec.items.map(f => `<div data-dd-root role="group" aria-label="${esc(f.label)}" style="border-radius:12px;padding:10px;background:${f.n ? '#F2F6FB' : 'transparent'};border:1px solid ${f.n ? '#C9D7EA' : 'transparent'}">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px">
+            <div style="min-width:0"><div style="font-size:13px;font-weight:700;color:#0E2240">${esc(f.label)}</div><div style="font-size:10.5px;color:#6B7789;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.code)}, ${f.total} values</div></div>
+            ${f.n ? `<button type="button" data-click="${on(f.clear)}" style="flex:none;font-size:11px;font-weight:600;color:#D0161E;background:none;border:0;padding:0;min-height:24px;cursor:pointer">Clear ${f.n}</button>` : ''}
+          </div>
+          <div style="position:relative">
+            <button type="button" data-click="${on(f.toggle)}" aria-haspopup="listbox" aria-expanded="${f.open}" style="width:100%;display:flex;align-items:center;gap:8px;min-height:40px;padding:0 12px;border-radius:10px;border:1px solid ${f.open || f.n ? '#003874' : '#D5DDE8'};background:#FFFFFF;color:${f.n ? '#0E2240' : '#6B7789'};font-size:13px;font-weight:${f.n ? 600 : 400};cursor:pointer;text-align:left;box-shadow:${f.open ? '0 0 0 3px rgba(0,56,116,0.12)' : 'none'}">
+              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.summary)}</span>
+              ${f.n ? `<span style="flex:none;font-size:11px;font-weight:700;background:#003874;color:#FFFFFF;border-radius:999px;padding:1px 8px">${f.n}</span>` : ''}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#003874" stroke-width="2.5" aria-hidden="true" style="flex:none;transform:rotate(${f.open ? 180 : 0}deg)"><path d="M6 9l6 6 6-6"></path></svg>
+            </button>
+            ${f.open ? `<div role="dialog" aria-label="Choose ${esc(f.label)} values" style="position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:60;background:#FFFFFF;border:1px solid #C9D7EA;border-radius:12px;box-shadow:0 16px 40px rgba(0,37,77,0.18);padding:10px;display:flex;flex-direction:column;gap:8px">
+              <label style="position:relative;display:block"><span class="sr">Search ${esc(f.label)} values</span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#5A6472" stroke-width="2" aria-hidden="true" style="position:absolute;left:10px;top:11px"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
+                <input id="ddsearch" type="search" placeholder="Search ${f.total} values" value="${esc(S.ddq)}" data-input="${on((e) => set({ ddq: e.target.value }))}" style="width:100%;border:1px solid #D5DDE8;border-radius:8px;padding:0 10px 0 30px;min-height:36px;font-size:13px;color:#0E2240"></label>
+              <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px">
+                <button type="button" data-click="${on(f.selectShown)}" ${f.shownN ? '' : 'disabled'} style="font-size:12px;font-weight:600;color:#003874;background:none;border:0;padding:0;min-height:26px;cursor:pointer">Select all ${S.ddq ? 'matching ' : ''}(${f.shownN})</button>
+                <button type="button" data-click="${on(f.clear)}" ${f.n ? '' : 'disabled'} style="font-size:12px;font-weight:600;color:${f.n ? '#D0161E' : '#B4BCC8'};background:none;border:0;padding:0;min-height:26px;cursor:pointer">Clear</button>
+              </div>
+              <div id="ddlist" role="listbox" aria-multiselectable="true" style="max-height:248px;overflow:auto;border-top:1px solid #EEF1F5;border-bottom:1px solid #EEF1F5;margin:0 -10px;padding:4px 6px">
+                ${f.shown.length ? f.shown.map(o => `<button type="button" role="option" aria-selected="${o.on}" data-click="${on(o.pick)}" style="width:100%;display:flex;align-items:center;gap:10px;min-height:34px;padding:0 8px;border:0;border-radius:6px;background:${o.on ? '#EEF2F8' : 'transparent'};color:#0E2240;font-size:13px;font-weight:${o.on ? 600 : 400};cursor:pointer;text-align:left">
+                  <span aria-hidden="true" style="flex:none;width:16px;height:16px;border-radius:4px;border:1.5px solid ${o.on ? '#003874' : '#AEB8C6'};background:${o.on ? '#003874' : '#FFFFFF'};color:#FFFFFF;display:flex;align-items:center;justify-content:center">${o.on ? CHECK : ''}</span>
+                  <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.val)}</span></button>`).join('') : `<div style="padding:16px 8px;font-size:12px;color:#6B7789;text-align:center">No values match “${esc(S.ddq)}”.</div>`}
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                <span style="font-size:12px;color:#5A6472">${f.n} selected</span>
+                <button type="button" data-click="${on(f.close)}" style="font-size:12px;font-weight:700;min-height:32px;padding:0 14px;border-radius:8px;border:0;background:#003874;color:#FFFFFF;cursor:pointer">Done</button>
+              </div>
+            </div>` : ''}
+          </div>
+          ${f.n ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px">${f.sel.map(v => `<button type="button" data-click="${on(v.remove)}" aria-label="Remove ${esc(v.val)}" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;border-radius:999px;padding:0 6px 0 9px;min-height:24px;border:0;background:#003874;color:#FFFFFF;cursor:pointer">${esc(v.val)}<span aria-hidden="true" style="font-size:13px;opacity:.8">×</span></button>`).join('')}${f.more ? `<span style="font-size:11px;color:#5A6472;align-self:center;padding-left:4px">+${f.more} more</span>` : ''}</div>` : ''}
+        </div>`).join('')}</div>` : ''}
+      </div>`).join('')}
+    </section>`;
+
+    return `<div style="padding:20px 16px 24px;padding-right:calc(68px + env(safe-area-inset-right, 0px))"><div style="max-width:1440px;margin:0 auto;display:flex;flex-direction:column;gap:16px">
+      ${header}${kpis}${chipRow}
+      <div style="display:flex;flex-direction:column;gap:16px;min-width:0">${funnel}${trend}</div>
+      ${S.fopen ? '' : `<button type="button" data-click="${on(() => set({ fopen: true, fanim: true }))}" aria-label="Open filters${V.applied.length ? ', ' + V.applied.length + ' active' : ''}" class="ftab" style="position:fixed;top:50%;right:0;transform:translateY(-50%);z-index:60;display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 10px;padding-right:calc(10px + env(safe-area-inset-right, 0px));background:#003874;color:#FFFFFF;border:0;border-radius:14px 0 0 14px;box-shadow:-6px 8px 24px rgba(0,37,77,0.28);cursor:pointer">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"></path></svg>
+        <span style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:13px;font-weight:700;letter-spacing:.04em">Filters</span>
+        ${V.applied.length ? `<span style="min-width:22px;height:22px;border-radius:11px;background:#ED1C24;color:#FFFFFF;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 6px">${V.applied.length}</span>` : ''}
+      </button>`}
+      ${S.fopen ? `<div data-click="${on(closeF)}" class="${S.fanim ? 'fadeBg' : ''}" style="position:fixed;inset:0;z-index:70;background:rgba(0,20,50,0.35)"></div>
+      <aside id="fdrawer" role="dialog" aria-modal="true" aria-label="Filters" class="${S.fanim ? 'slideIn' : ''}" style="position:fixed;top:0;right:0;bottom:0;z-index:80;width:min(420px,100vw);overflow-y:auto;overscroll-behavior:contain;background:#FFFFFF;box-shadow:-16px 0 40px rgba(0,37,77,0.25);padding-bottom:env(safe-area-inset-bottom, 0px)">${filters}</aside>` : ''}
+      ${mixSection(V)}
+      <p style="margin:0;font-size:11px;color:#5A6472">Mock-up data. 1 to 5 Nov offers and disbursals match the daily-mailer check; every other day and the filter values are illustrative. Data runs 1 Jul to 8 Nov 2026.</p>
+    </div></div>`;
+  }
+
+  // ------------------------------------------------------------------ render + events
+  const app = document.getElementById('app');
+  function render() {
+    const ae = document.activeElement;
+    const keepId = ae && ae.id ? ae.id : null;
+    const caret = keepId && ae.selectionStart != null ? ae.selectionStart : null;
+    const oldList = document.getElementById('ddlist');
+    const listScroll = oldList ? oldList.scrollTop : 0;
+    const oldDrawer = document.getElementById('fdrawer');
+    const drawerScroll = oldDrawer ? oldDrawer.scrollTop : 0;
+    H = [];
+    app.innerHTML = view(compute());
+    if (keepId) {
+      const el = document.getElementById(keepId);
+      if (el) { el.focus(); if (caret != null && el.setSelectionRange) el.setSelectionRange(caret, caret); }
+    }
+    const dl = document.getElementById('ddlist'); if (dl && listScroll) dl.scrollTop = listScroll;
+    const dr = document.getElementById('fdrawer'); if (dr && drawerScroll) dr.scrollTop = drawerScroll;
+    document.body.style.overflow = S.fopen ? 'hidden' : '';
+    if (S.fanim) { S.fanim = false; const fs = document.getElementById('fsearch'); if (fs && !keepId) fs.focus({ preventScroll: true }); }
+    if (S.ddFocus) { S.ddFocus = false; const d = document.getElementById('ddsearch'); if (d) d.focus(); }
+  }
+  app.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-click]');
+    if (S.dd && !e.target.closest('[data-dd-root]')) { S.dd = null; S.ddq = ''; if (!el || el.disabled) { render(); return; } }
+    if (el && !el.disabled) H[+el.getAttribute('data-click')](e);
+  });
+  app.addEventListener('change', (e) => { const el = e.target.closest('[data-change]'); if (el) H[+el.getAttribute('data-change')](e); });
+  app.addEventListener('input', (e) => { const el = e.target.closest('[data-input]'); if (el) H[+el.getAttribute('data-input')](e); });
+  app.addEventListener('mouseover', (e) => { const el = e.target.closest('[data-hover]'); if (el) H[+el.getAttribute('data-hover')](e); });
+  app.addEventListener('mouseout', (e) => { const el = e.target.closest('[data-leave]'); if (el && !el.contains(e.relatedTarget)) H[+el.getAttribute('data-leave')](e); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (S.dd) set({ dd: null, ddq: '' });
+    else if (S.pcal || S.tcal || S.mcal) set({ pcal: false, tcal: false, mcal: false });
+    else if (S.fopen) set({ fopen: false });
+  });
+  render();
+  FIRST = false;
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce) { INTRO = 1; render(); }
+  else {
+    const t0 = performance.now();
+    const tick = (now) => {
+      INTRO = Math.min(1, (now - t0) / 1100);
+      const V = compute();
+      document.querySelectorAll('[data-kpi]').forEach(el => { el.textContent = V.kpis[+el.getAttribute('data-kpi')].value; });
+      if (INTRO < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+})();
+</script>
+</body>
+</html>
